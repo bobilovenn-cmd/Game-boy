@@ -24,7 +24,7 @@ JS_ACTION = {0:"back",1:"confirm",2:"enable",3:"disable",4:"jog_ccw",5:"jog_cw",
 C_BG     = 0xFF1A1A2E
 C_PANEL  = 0xFF16213E
 C_TEXT   = 0xFFFFFFFF
-C_DIM    = 0xFFB0B0C0
+C_DIM    = 0xFFFFFFFF
 C_ACCENT = 0xFF00D4AA
 C_RED    = 0xFFE74C3C
 C_YELLOW = 0xFFF39C12
@@ -218,14 +218,14 @@ def main():
             for i, name in enumerate(tab_names):
                 x = i * tw
                 bg = C_ACCENT if i == tab else C_PANEL
-                display.draw_rect(x+2, SH-45, tw-4, 30, bg)
+                display.draw_rect(x+2, SH-70, tw-4, 30, bg)
                 tc = C_BLACK if i == tab else C_DIM
-                display.draw_text(name, x+tw//2-30, SH-42, tc, 18)
+                display.draw_text(name, x+tw//2-30, SH-67, tc, 18)
 
             # 连接状态
             conn = "Online" if d.alive else "Offline"
             cc = C_ACCENT if d.alive else C_RED
-            display.draw_text(conn, SW-90, 6, cc, 14)
+            display.draw_text(conn, SW-100, 6, cc, 14)
 
             # 状态消息
             if status_msg[0] and time.time() - status_time[0] < 2:
@@ -234,7 +234,7 @@ def main():
                 display.draw_text(status_msg[0], SW//2-115, SH//2-12, C_ACCENT, 16)
 
             # 底部提示
-            display.draw_text("[D-pad]Navigate [A]Select [B]Back [Start]Tab", 10, SH-14, (80,80,100), 11)
+            display.draw_text("[D-pad]Navigate [A]Select [B]Back [Start]Tab", 10, SH-35, (80,80,100), 11)
 
             display.flip()
             time.sleep(1.0/30)
@@ -278,12 +278,12 @@ def _draw_monitor(display, d, W, H, sel, items):
     for name, val in params:
         display.draw_rect(210, y, W-220, 26, C_INPUT)
         display.draw_text(name, 215, y+4, C_DIM, 13)
-        display.draw_text(val, W-10, y+4, C_ACCENT, 13)
+        display.draw_text(val, W-200, y+4, C_ACCENT, 13)
         y += 30
 
     # 波形区域
     wave_y = y + 15
-    wave_h = H - wave_y - 60
+    wave_h = H - wave_y - 100
     display.draw_rect(210, wave_y, W-220, wave_h, C_INPUT)
     display.draw_rect(210, wave_y, W-220, 2, C_BORDER)
     display.draw_rect(210, wave_y+wave_h-2, W-220, 2, C_BORDER)
@@ -322,11 +322,8 @@ def _draw_config(display, d, W, H, sel, items):
         tc = C_ACCENT if is_sel else C_TEXT
         display.draw_text(name, 20, y+8, tc, 15)
         # 显示索引
-        display.draw_text(f"0x{idx:04X}:{sub}", W-100, y+8, C_DIM, 12)
+        display.draw_text(f"0x{idx:04X}:{sub}", W-200, y+8, C_DIM, 12)
         y += 40
-
-    # 底部提示
-    display.draw_text("[Up/Down]Select [A]Read [Start]Tab", 10, H-60, C_DIM, 12)
 
 
 def _draw_ota(display, W, H, sel, items):
@@ -348,8 +345,6 @@ def _draw_ota(display, W, H, sel, items):
         tc = C_ACCENT if is_sel else C_TEXT
         display.draw_text(name, 20, y+8, tc, 15)
         y += 40
-
-    display.draw_text("[Up/Down]Select [A]Execute [Start]Tab", 10, H-60, C_DIM, 12)
 
 
 if __name__ == "__main__":

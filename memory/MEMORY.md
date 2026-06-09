@@ -1,1 +1,2 @@
 - [RGB30 母机部署](project_rgb30_host.md) — ROCKNIX + SDL2 诊断界面，按键映射已验证，D-pad 导航正常，开机自启动已配置
+- [记忆同步](feedback_sync_memory.md) — 更新记忆时同步复制到 Game Boy/memory/ 目录

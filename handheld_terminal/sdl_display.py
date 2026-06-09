@@ -77,13 +77,13 @@ class SDLDisplay:
             self._ttf = ctypes.CDLL('/usr/lib/libSDL2_ttf-2.0.so.0')
             self._ttf.TTF_Init()
             self._ttf.TTF_OpenFont.restype = ctypes.c_void_p
-            self._font = self._ttf.TTF_OpenFont(b'/usr/share/fonts/liberation/LiberationMono-Regular.ttf', 28)
+            self._font = self._ttf.TTF_OpenFont(b'/usr/share/fonts/liberation/LiberationMono-Regular.ttf', 22)
             if not self._font:
                 # Try any available font
                 import glob
                 fonts = glob.glob('/usr/share/fonts/**/*.ttf', recursive=True)
                 if fonts:
-                    self._font = self._ttf.TTF_OpenFont(fonts[0].encode(), 20)
+                    self._font = self._ttf.TTF_OpenFont(fonts[0].encode(), 28)
             if self._font:
                 print("Font loaded")
             else:
@@ -93,7 +93,6 @@ class SDLDisplay:
             print("SDL2_ttf not available")
 
         self._running = True
-        self._text_cache = {}  # (text, r, g, b) -> surface pointer
 
     def _update_surface(self):
         self._sdl.SDL_GetWindowSurface.restype = ctypes.c_void_p
@@ -121,31 +120,28 @@ class SDLDisplay:
             return
 
         if isinstance(color, int):
+            # ARGB int: extract RGB
             r = (color >> 16) & 0xFF
             g = (color >> 8) & 0xFF
             b = color & 0xFF
         else:
             r, g, b = color
+        sdl_color = struct.pack('BBBB', 255, r, g, b)
+        color_buf = ctypes.create_string_buffer(sdl_color)
 
-        # Check cache
-        cache_key = (text, r, g, b)
-        text_surf = self._text_cache.get(cache_key)
-
+        # Render text to surface
+        self._ttf.TTF_RenderUTF8_Blended.restype = ctypes.c_void_p
+        text_surf = self._ttf.TTF_RenderUTF8_Blended(
+            self._font, text.encode('utf-8'), color_buf
+        )
         if not text_surf:
-            sdl_color = struct.pack('BBBB', r, g, b, 255)
-            color_buf = ctypes.create_string_buffer(sdl_color)
-            self._ttf.TTF_RenderUTF8_Blended.restype = ctypes.c_void_p
-            text_surf = self._ttf.TTF_RenderUTF8_Blended(
-                self._font, text.encode('utf-8'), color_buf
-            )
-            if not text_surf:
-                return
-            self._text_cache[cache_key] = text_surf
+            return
 
         # Blit to window surface
         rect = struct.pack('iiii', x, y, 0, 0)
         rect_buf = ctypes.create_string_buffer(rect)
         self._sdl.SDL_UpperBlit(text_surf, None, self._surface, rect_buf)
+        self._sdl.SDL_FreeSurface(text_surf)
 
     def poll_events(self):
         """Poll SDL events, return list of (type, detail) tuples"""
@@ -176,11 +172,6 @@ class SDLDisplay:
         return self._running
 
     def quit(self):
-        # Free cached text surfaces
-        for surf in self._text_cache.values():
-            self._sdl.SDL_FreeSurface(surf)
-        self._text_cache.clear()
-
         if self._ttf and self._font:
             self._ttf.TTF_CloseFont(self._font)
             self._ttf.TTF_Quit()
