@@ -74,7 +74,7 @@ var font: Font
 var udp = PacketPeerUDP.new()
 var motor = MotorDataScript.new()
 
-var current_tab = 0
+var current_tab = 2
 var selected = [0, 0, 0]
 var status_msg = ""
 var status_kind = "info"
@@ -144,6 +144,7 @@ func _process(_delta: float) -> void:
 		motor.alive = false
 
 	_process_ota(now)
+	current_tab = 2
 	queue_redraw()
 
 
@@ -513,7 +514,7 @@ func _draw_tabs() -> void:
 		var active = i == current_tab
 		draw_rect(rect, C_ACCENT if active else C_PANEL_2, true)
 		draw_rect(rect, C_ACCENT if active else C_LINE, false, 1.0)
-		_draw_text(TAB_NAMES[i], rect.position.x, rect.position.y + 9, C_BLACK if active else C_TEXT, 15, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x)
+		_draw_text(TAB_NAMES[i], rect.position.x, rect.position.y + 9, C_TEXT, 15, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x)
 		x += 234
 
 
@@ -527,8 +528,7 @@ func _draw_monitor_page() -> void:
 
 func _draw_config_page() -> void:
 	_draw_panel(Rect2(18, 140, 684, 386), C_PANEL, C_LINE)
-	_draw_text("OBJECT DICTIONARY", 36, 158, C_ACCENT, 17)
-	_draw_text("A read selected   D-pad navigate   Start page", 330, 164, C_TEXT, 10)
+	_draw_text("OBJECT DICTIONARY  A READ  D-PAD NAV  START PAGE", 36, 158, C_ACCENT, 14)
 	var y = 194.0
 	for i in CONFIG_ITEMS.size():
 		var item: Array = CONFIG_ITEMS[i]
@@ -545,29 +545,29 @@ func _draw_config_page() -> void:
 	draw_rect(selected_rect, C_ACCENT, false, 2.0)
 	draw_rect(Rect2(selected_rect.position.x, selected_rect.position.y, 5, selected_rect.size.y), C_ACCENT, true)
 	_draw_panel(Rect2(18, 542, 684, 62), C_INPUT, C_LINE)
-	_draw_text("SDO RESULT", 36, 562, C_TEXT, 11)
-	_draw_text(result_msg, 36, 586, C_ACCENT, 13)
+	_draw_text("SDO RESULT: %s" % result_msg, 36, 562, C_TEXT, 11)
 
 
 func _draw_ota_page() -> void:
 	_draw_panel(Rect2(18, 140, 684, 120), C_PANEL, C_LINE)
-	_draw_text("FIRMWARE UPDATE", 36, 160, C_ACCENT, 18)
 	var fw = firmware_name if firmware_name != "" else "No firmware loaded"
-	_draw_text(fw, 36, 196, C_TEXT, 13)
 	var meta = "Copy firmware to /storage/firmware.bin"
 	if firmware_size > 0:
 		meta = "Size %.1f KB  MD5 %s..." % [float(firmware_size) / 1024.0, firmware_md5.substr(0, 16)]
-	_draw_text(meta, 36, 226, C_TEXT, 11)
+	_draw_text("FIRMWARE UPDATE  %s" % fw, 36, 160, C_ACCENT, 16)
+	_draw_text(meta, 36, 196, C_TEXT, 11)
 
 	_draw_action_rail(Rect2(18, 284, 260, 226), OTA_ITEMS, int(selected[2]))
 	_draw_panel(Rect2(300, 284, 402, 226), C_PANEL, C_LINE)
-	_draw_text("TRANSFER STATE", 318, 306, C_TEXT, 11)
-	_draw_text(ota_state.to_upper(), 318, 338, _state_color(), 20)
+	_draw_text("TRANSFER STATE: %s" % ota_state.to_upper(), 318, 306, C_TEXT, 11)
 	_draw_progress_bar(Rect2(318, 382, 360, 30), ota_progress, "%d%%  %.1f KB/s" % [ota_progress, ota_speed_kbps])
 	_draw_text("Target: ESP32 CAN Dongle 192.168.4.1:5000", 318, 446, C_TEXT, 11)
 
 	_draw_panel(Rect2(18, 548, 684, 92), C_INPUT, C_LINE)
-	_draw_text("OTA LOG", 36, 568, C_TEXT, 11)
+	var log_head = "OTA LOG"
+	if not ota_log.is_empty():
+		log_head = "OTA LOG: %s" % ota_log.back()
+	_draw_text(log_head, 36, 568, C_TEXT, 11)
 	var log_y = 591.0
 	for line in ota_log:
 		_draw_text(line, 36, log_y, C_TEXT, 10)
