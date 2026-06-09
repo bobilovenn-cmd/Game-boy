@@ -1,0 +1,1 @@
+- [RGB30 母机部署](project_rgb30_host.md) — ROCKNIX + SDL2 诊断界面，按键映射已验证，D-pad 导航正常，开机自启动已配置
