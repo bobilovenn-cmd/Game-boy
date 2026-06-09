@@ -498,12 +498,12 @@ func _draw_background() -> void:
 func _draw_header() -> void:
 	_draw_panel(Rect2(14, 12, 692, 64), C_PANEL, C_LINE)
 	_draw_text("AGV MOTOR DIAGNOSTIC TERMINAL", 30, 28, C_TEXT, 20)
-	_draw_text("RGB30 720x720  |  CANopen over UDP  |  Node %d" % AppSettings.DEFAULT_NODE_ID, 32, 54, C_DIM, 14)
-
 	var link = motor.alive or (last_rx_msec > 0 and Time.get_ticks_msec() - last_rx_msec <= 1500)
 	_draw_status_chip(Rect2(505, 23, 84, 24), "LINK", link)
 	_draw_status_chip(Rect2(598, 23, 84, 24), "UDP", udp_ready)
-	_draw_text("%d ms" % AppSettings.HEARTBEAT_INTERVAL_MS, 616, 55, C_DIM, 12)
+	_draw_text("%d ms" % AppSettings.HEARTBEAT_INTERVAL_MS, 622, 56, C_DIM, 10)
+	_draw_text("RGB30 720", 32, 56, C_TEXT, 10)
+	_draw_text("UDP NODE %d" % AppSettings.DEFAULT_NODE_ID, 96, 56, C_TEXT, 10)
 
 
 func _draw_tabs() -> void:
@@ -528,49 +528,49 @@ func _draw_monitor_page() -> void:
 func _draw_config_page() -> void:
 	_draw_panel(Rect2(18, 140, 684, 386), C_PANEL, C_LINE)
 	_draw_text("OBJECT DICTIONARY", 36, 158, C_ACCENT, 17)
-	_draw_text("A read selected   D-pad navigate   Start page", 330, 162, C_DIM, 14)
+	_draw_text("A read selected   D-pad navigate   Start page", 330, 164, C_TEXT, 10)
 	var y = 194.0
 	for i in CONFIG_ITEMS.size():
 		var item: Array = CONFIG_ITEMS[i]
-		var selected_row = i == int(selected[1])
 		var row_rect = Rect2(34, y, 652, 32)
-		draw_rect(row_rect, C_PANEL_2 if selected_row else C_INPUT, true)
-		draw_rect(row_rect, C_ACCENT if selected_row else C_LINE, false, 2.0 if selected_row else 1.0)
-		if selected_row:
-			draw_rect(Rect2(row_rect.position.x, row_rect.position.y, 5, row_rect.size.y), C_ACCENT, true)
+		draw_rect(row_rect, C_INPUT, true)
+		draw_rect(row_rect, C_LINE, false, 1.0)
 		var tc = C_TEXT
 		var dc = C_DIM
-		_draw_text(item[0], 46, y + 8, tc, 14)
-		_draw_text("0x%s:%d" % [_hex(item[1]), item[2]], 288, y + 8, dc, 14)
-		_draw_text(item[3], 408, y + 8, dc, 14)
+		_draw_text(item[0], 46, y + 9, tc, 12)
+		_draw_text("0x%s:%d" % [_hex(item[1]), item[2]], 288, y + 9, dc, 12)
+		_draw_text(item[3], 408, y + 9, dc, 12)
 		y += 36
+	var selected_rect = Rect2(34, 194 + int(selected[1]) * 36, 652, 32)
+	draw_rect(selected_rect, C_ACCENT, false, 2.0)
+	draw_rect(Rect2(selected_rect.position.x, selected_rect.position.y, 5, selected_rect.size.y), C_ACCENT, true)
 	_draw_panel(Rect2(18, 542, 684, 62), C_INPUT, C_LINE)
-	_draw_text("SDO RESULT", 36, 560, C_DIM, 14)
-	_draw_text(result_msg, 36, 586, C_ACCENT, 16)
+	_draw_text("SDO RESULT", 36, 562, C_TEXT, 11)
+	_draw_text(result_msg, 36, 586, C_ACCENT, 13)
 
 
 func _draw_ota_page() -> void:
 	_draw_panel(Rect2(18, 140, 684, 120), C_PANEL, C_LINE)
 	_draw_text("FIRMWARE UPDATE", 36, 160, C_ACCENT, 18)
 	var fw = firmware_name if firmware_name != "" else "No firmware loaded"
-	_draw_text(fw, 36, 194, C_TEXT, 16)
+	_draw_text(fw, 36, 196, C_TEXT, 13)
 	var meta = "Copy firmware to /storage/firmware.bin"
 	if firmware_size > 0:
 		meta = "Size %.1f KB  MD5 %s..." % [float(firmware_size) / 1024.0, firmware_md5.substr(0, 16)]
-	_draw_text(meta, 36, 224, C_DIM, 14)
+	_draw_text(meta, 36, 226, C_TEXT, 11)
 
 	_draw_action_rail(Rect2(18, 284, 260, 226), OTA_ITEMS, int(selected[2]))
 	_draw_panel(Rect2(300, 284, 402, 226), C_PANEL, C_LINE)
-	_draw_text("TRANSFER STATE", 318, 304, C_DIM, 14)
-	_draw_text(ota_state.to_upper(), 318, 336, _state_color(), 25)
+	_draw_text("TRANSFER STATE", 318, 306, C_TEXT, 11)
+	_draw_text(ota_state.to_upper(), 318, 338, _state_color(), 20)
 	_draw_progress_bar(Rect2(318, 382, 360, 30), ota_progress, "%d%%  %.1f KB/s" % [ota_progress, ota_speed_kbps])
-	_draw_text("Target: ESP32 CAN Dongle 192.168.4.1:5000", 318, 444, C_DIM, 14)
+	_draw_text("Target: ESP32 CAN Dongle 192.168.4.1:5000", 318, 446, C_TEXT, 11)
 
 	_draw_panel(Rect2(18, 548, 684, 92), C_INPUT, C_LINE)
-	_draw_text("OTA LOG", 36, 566, C_DIM, 14)
+	_draw_text("OTA LOG", 36, 568, C_TEXT, 11)
 	var log_y = 591.0
 	for line in ota_log:
-		_draw_text(line, 36, log_y, C_TEXT, 11)
+		_draw_text(line, 36, log_y, C_TEXT, 10)
 		log_y += 15
 
 
@@ -581,12 +581,13 @@ func _draw_action_rail(rect: Rect2, items: Array, selected_index: int) -> void:
 	for i in items.size():
 		var is_sel = i == selected_index
 		var r = Rect2(rect.position.x + 14, y, rect.size.x - 28, 38)
-		draw_rect(r, C_PANEL_2 if is_sel else C_INPUT, true)
-		draw_rect(r, C_ACCENT if is_sel else C_LINE, false, 2.0 if is_sel else 1.0)
-		if is_sel:
-			draw_rect(Rect2(r.position.x, r.position.y, 5, r.size.y), C_ACCENT, true)
+		draw_rect(r, C_INPUT, true)
+		draw_rect(r, C_LINE, false, 1.0)
 		_draw_text(items[i], r.position.x, r.position.y + 10, C_TEXT, 15, HORIZONTAL_ALIGNMENT_CENTER, r.size.x)
 		y += 46
+	var selected_rect = Rect2(rect.position.x + 14, rect.position.y + 48 + selected_index * 46, rect.size.x - 28, 38)
+	draw_rect(selected_rect, C_ACCENT, false, 2.0)
+	draw_rect(Rect2(selected_rect.position.x, selected_rect.position.y, 5, selected_rect.size.y), C_ACCENT, true)
 
 
 func _draw_telemetry_grid(rect: Rect2) -> void:
@@ -614,9 +615,8 @@ func _draw_metric_card(rect: Rect2, label: String, value: String, unit: String, 
 	draw_rect(rect, C_INPUT, true)
 	draw_rect(rect, Color(color, 0.75), false, 1.0)
 	_draw_text(label, rect.position.x + 8, rect.position.y + 7, C_DIM, 12)
-	_draw_text(value, rect.position.x + 8, rect.position.y + 33, color, 16)
-	if unit != "":
-		_draw_text(unit, rect.position.x + rect.size.x - 38, rect.position.y + 33, C_DIM, 12)
+	var display_value = value if unit == "" else "%s %s" % [value, unit]
+	_draw_text(display_value, rect.position.x + 8, rect.position.y + 27, color, 12)
 
 
 func _draw_waveform_panel(rect: Rect2) -> void:
