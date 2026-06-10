@@ -11,7 +11,7 @@ const DATA = {
 	LANG_EN: {
 		"language_title": "SELECT LANGUAGE",
 		"language_subtitle": "Choose before entering motor control",
-		"language_zh": "Chinese",
+		"language_zh": "Chinese / 中文",
 		"language_en": "English",
 		"language_hint": "D-PAD select   A confirm",
 		"app_title": "AGV MOTOR DIAGNOSTIC TERMINAL",
@@ -69,12 +69,12 @@ const DATA = {
 		"target_dongle": "Target: ESP32 CAN Dongle 192.168.4.1:5000",
 		"ota_log": "OTA LOG",
 		"ota_log_line": "OTA LOG: %s",
-		"footer": "START page   D-PAD select   A execute   B stop   X enable   Y disable   L2/SEL E-STOP",
+		"footer": "START page   D-PAD select   A execute   B stop   X enable   Y disable   L2 E-STOP   SELECT language",
 	},
 	LANG_ZH: {
 		"language_title": "选择语言 / SELECT LANGUAGE",
 		"language_subtitle": "进入电机控制系统前选择界面语言",
-		"language_zh": "中文版",
+		"language_zh": "Chinese / 中文",
 		"language_en": "English",
 		"language_hint": "方向键选择   A 确认",
 		"app_title": "AGV 电机诊断终端",
@@ -132,7 +132,7 @@ const DATA = {
 		"target_dongle": "目标: ESP32 CAN 网关 192.168.4.1:5000",
 		"ota_log": "OTA 日志",
 		"ota_log_line": "OTA 日志: %s",
-		"footer": "START 切页   方向键选择   A 执行   B 停止   X 使能   Y 失能   L2/SEL 急停",
+		"footer": "START 切页   方向键选择   A 执行   B 停止   X 使能   Y 失能   L2 急停   SELECT 语言",
 	},
 }
 

@@ -35,7 +35,7 @@ const C_BLACK = Color8(0, 0, 0)          # 黑色
 
 ## UI配置常量
 const LANGUAGE_OPTIONS = [UiText.LANG_ZH, UiText.LANG_EN]  # 支持的语言列表
-const TAB_KEYS = ["tab_monitor", "tab_config", "tab_ota"]   # 三个页面标签
+const TAB_KEYS = ["tab_monitor", "tab_config", "tab_ota"]   # 页面标签
 const MONITOR_ITEM_KEYS = ["cmd_enable", "cmd_disable", "cmd_estop", "cmd_jog_cw", "cmd_jog_ccw"]  # 监控页命令列表
 
 ## 配置页参数列表 - [显示名, CANopen索引, 子索引, 单位描述]
@@ -62,9 +62,9 @@ const RGB30_RAW_BUTTONS = {
 	3: "disable",   # 失能键(Y)
 	4: "jog_ccw",   # 逆时针点动(L1)
 	5: "jog_cw",    # 顺时针点动(R1)
-	6: "estop",     # 急停(L2)
-	7: "r2",        # R2(保留)
-	8: "estop",     # 急停(备用)
+	6: "language_select",  # SELECT: 返回语言选择界面
+	7: "stick_press",  # 左轴按下(无动作)
+	8: "language_select",  # SELECT: 返回语言选择界面(备用映射)
 	9: "menu",      # 菜单/切页(START)
 	13: "up",       # 上
 	14: "down",     # 下
@@ -79,8 +79,9 @@ const GODOT_STANDARD_BUTTONS = {
 	1: "back",
 	2: "enable",
 	3: "disable",
-	4: "estop",
+	4: "language_select",
 	6: "menu",
+	7: "stick_press",
 	9: "jog_ccw",
 	10: "jog_cw",
 	11: "up",
@@ -137,14 +138,19 @@ var raw_input_ok = false                    # /dev/input/js0是否可用
 var last_input_label = "none"               # 最近按键调试标签
 var last_raw_button = -1                    # 最近原始按键ID
 var godot_input_enabled = false             # 是否启用Godot标准输入(备用)
+var godot_axis_active = {}                  # fallback 轴输入去抖状态
 
 
 ## 应用初始化
 func _ready() -> void:
-	# 获取系统字体，失败则使用备用字体
-	font = get_theme_default_font()
-	if font == null:
-		font = ThemeDB.fallback_font
+	# 加载打包的CJK字体(支持中英文)，失败则回退到系统字体
+	var cjk_font = ResourceLoader.load("res://fonts/AGV_CJK.ttf", "", ResourceLoader.CACHE_MODE_REUSE)
+	if cjk_font:
+		font = cjk_font
+	else:
+		font = get_theme_default_font()
+		if font == null:
+			font = ThemeDB.fallback_font
 
 	# 绑定本地UDP端口，设置目标地址(ESP32网关)
 	var err = udp.bind(AppSettings.LOCAL_UDP_PORT, "0.0.0.0")
@@ -199,6 +205,8 @@ func _input(event: InputEvent) -> void:
 		_handle_key(event.keycode)
 	elif godot_input_enabled and event is InputEventJoypadButton:
 		_handle_godot_joy_button(event.button_index, event.pressed)
+	elif godot_input_enabled and event is InputEventJoypadMotion:
+		_handle_godot_joy_motion(event.axis, event.axis_value)
 
 
 ## 渲染入口 - 根据当前状态绘制对应界面
@@ -301,6 +309,25 @@ func _handle_godot_joy_button(button_index: int, pressed: bool) -> void:
 		_handle_action("jog_stop")
 
 
+func _handle_godot_joy_motion(axis: int, value: float) -> void:
+	var action = ""
+	if axis == 4:
+		action = "estop"
+	elif axis == 5:
+		action = "r2"
+	if action == "":
+		return
+
+	var is_pressed = value > 0.55
+	var was_pressed = bool(godot_axis_active.get(axis, false))
+	if is_pressed == was_pressed:
+		return
+	godot_axis_active[axis] = is_pressed
+	last_input_label = "axis %d %.2f -> %s" % [axis, value, action if is_pressed else "release"]
+	if is_pressed:
+		_handle_action(action)
+
+
 func _handle_key(keycode: int) -> void:
 	match keycode:
 		KEY_TAB:
@@ -371,6 +398,10 @@ func _handle_action(action: String) -> void:
 			_send(Protocol.jog_stop(AppSettings.DEFAULT_NODE_ID), "Jog stopped")
 		"r2":
 			_set_status("R2 reserved")
+		"stick_press":
+			pass
+		"language_select":
+			_return_to_language_select()
 
 
 func _handle_language_action(action: String) -> void:
@@ -385,6 +416,14 @@ func _handle_language_action(action: String) -> void:
 			language_selected = true
 			ui_lang = LANGUAGE_OPTIONS[selected_language]
 			_set_status("LANGUAGE %s" % ui_lang.to_upper())
+
+
+func _return_to_language_select() -> void:
+	var idx = LANGUAGE_OPTIONS.find(ui_lang)
+	selected_language = idx if idx >= 0 else 0
+	language_selected = false
+	status_msg = ""
+	status_until_msec = 0
 
 
 func _confirm_current_selection() -> void:
@@ -584,10 +623,11 @@ func _draw_language_select() -> void:
 	for i in labels.size():
 		var rect = Rect2(128, 250 + i * 82, 464, 58)
 		draw_rect(rect, C_INPUT, true)
-		draw_rect(rect, C_ACCENT if i == selected_language else C_LINE, false, 2.0 if i == selected_language else 1.0)
-		if i == selected_language:
-			draw_rect(Rect2(rect.position.x, rect.position.y, 6, rect.size.y), C_ACCENT, true)
+		draw_rect(rect, C_LINE, false, 1.0)
 		_draw_text(labels[i], rect.position.x, rect.position.y + 17, C_TEXT, 18, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x)
+	var selected_rect = Rect2(128, 250 + selected_language * 82, 464, 58)
+	draw_rect(selected_rect, C_ACCENT, false, 2.0)
+	draw_rect(Rect2(selected_rect.position.x, selected_rect.position.y, 6, selected_rect.size.y), C_ACCENT, true)
 	_draw_panel(Rect2(78, 590, 564, 48), C_INPUT, C_LINE)
 	_draw_text(_t("language_hint"), 78, 606, C_DIM, 14, HORIZONTAL_ALIGNMENT_CENTER, 564)
 
@@ -752,7 +792,7 @@ func _draw_command_matrix(rect: Rect2) -> void:
 	_draw_text("X %s" % _t("cmd_enable"), rect.position.x + 14, rect.position.y + 42, C_ACCENT, 13)
 	_draw_text("Y %s" % _t("cmd_disable"), rect.position.x + 96, rect.position.y + 42, C_WARN, 13)
 	_draw_text("L1/R1 JOG", rect.position.x + 14, rect.position.y + 66, C_TEXT, 13)
-	_draw_text("L2/SEL %s" % _t("cmd_estop"), rect.position.x + 96, rect.position.y + 66, C_RED, 13)
+	_draw_text("L2 %s" % _t("cmd_estop"), rect.position.x + 96, rect.position.y + 66, C_RED, 13)
 
 
 func _draw_live_debug(rect: Rect2) -> void:
