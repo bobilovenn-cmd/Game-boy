@@ -1,3 +1,8 @@
+## 电机数据模型 - motor_data.gd
+## 作用: 存储电机实时状态数据(电流、电压、速度、位置、转矩等)
+## 维护历史数据用于波形显示，解析CiA 402状态字
+## 依赖: settings.gd (WAVEFORM_HISTORY常量)
+
 extends RefCounted
 class_name MotorData
 

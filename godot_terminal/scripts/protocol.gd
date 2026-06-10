@@ -1,3 +1,8 @@
+## UDP通信协议构建器 - protocol.gd
+## 作用: 构建和解析与ESP32 CAN网关通信的JSON消息
+## 支持: 心跳、SDO读写、电机使能/失能、点动、OTA升级等命令
+## 独立模块，不依赖其他脚本
+
 extends RefCounted
 class_name Protocol
 

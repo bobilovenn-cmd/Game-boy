@@ -1,60 +1,79 @@
+## 主控制器 - main.gd
+## 作用: 应用入口，整合所有功能模块
+## 职责:
+##   - UI渲染: 绘制监控、配置、OTA三个页面
+##   - 输入处理: 读取/dev/input/js0手柄按键 + Godot键盘事件
+##   - UDP通信: 与ESP32 CAN网关收发消息
+##   - OTA固件升级: 加载、分块传输、校验、刷写
+## 依赖: settings.gd, protocol.gd, motor_data.gd, ui_text.gd
+
 extends Control
 
-const AppSettings = preload("res://scripts/settings.gd")
-const Protocol = preload("res://scripts/protocol.gd")
-const MotorDataScript = preload("res://scripts/motor_data.gd")
+## 依赖模块加载
+const AppSettings = preload("res://scripts/settings.gd")  # 全局配置
+const Protocol = preload("res://scripts/protocol.gd")      # 通信协议
+const MotorDataScript = preload("res://scripts/motor_data.gd")  # 电机数据模型
+const UiText = preload("res://scripts/ui_text.gd")          # 国际化文本
 
-const C_BG = Color8(4, 8, 14)
-const C_BG_2 = Color8(8, 18, 28)
-const C_PANEL = Color8(13, 29, 43)
-const C_PANEL_2 = Color8(18, 42, 58)
-const C_INPUT = Color8(3, 12, 20)
-const C_LINE = Color8(42, 92, 110)
-const C_GRID = Color8(22, 58, 72)
-const C_TEXT = Color8(234, 247, 252)
-const C_DIM = Color8(178, 214, 224)
-const C_DIM_2 = Color8(145, 184, 196)
-const C_ACCENT = Color8(0, 226, 188)
-const C_ACCENT_2 = Color8(56, 158, 255)
-const C_WARN = Color8(255, 184, 77)
-const C_RED = Color8(255, 72, 92)
-const C_GREEN = Color8(75, 255, 156)
-const C_BLACK = Color8(0, 0, 0)
+## 主题色常量 - 深色科技风格配色方案
+const C_BG = Color8(4, 8, 14)          # 背景色(深蓝黑)
+const C_BG_2 = Color8(8, 18, 28)        # 次背景色
+const C_PANEL = Color8(13, 29, 43)       # 面板背景
+const C_PANEL_2 = Color8(18, 42, 58)     # 次面板背景
+const C_INPUT = Color8(3, 12, 20)        # 输入框背景
+const C_LINE = Color8(42, 92, 110)       # 边框线
+const C_GRID = Color8(22, 58, 72)        # 网格线
+const C_TEXT = Color8(234, 247, 252)      # 主文本(亮白)
+const C_DIM = Color8(178, 214, 224)      # 次要文本(灰白)
+const C_DIM_2 = Color8(145, 184, 196)    # 更暗文本
+const C_ACCENT = Color8(0, 226, 188)     # 强调色(青绿)
+const C_ACCENT_2 = Color8(56, 158, 255)  # 次强调色(蓝)
+const C_WARN = Color8(255, 184, 77)      # 警告色(橙黄)
+const C_RED = Color8(255, 72, 92)        # 错误色(红)
+const C_GREEN = Color8(75, 255, 156)     # 成功色(绿)
+const C_BLACK = Color8(0, 0, 0)          # 黑色
 
-const TAB_NAMES = ["MONITOR", "CONFIG", "OTA"]
-const MONITOR_ITEMS = ["ENABLE", "DISABLE", "E-STOP", "JOG CW", "JOG CCW"]
+## UI配置常量
+const LANGUAGE_OPTIONS = [UiText.LANG_ZH, UiText.LANG_EN]  # 支持的语言列表
+const TAB_KEYS = ["tab_monitor", "tab_config", "tab_ota"]   # 三个页面标签
+const MONITOR_ITEM_KEYS = ["cmd_enable", "cmd_disable", "cmd_estop", "cmd_jog_cw", "cmd_jog_ccw"]  # 监控页命令列表
+
+## 配置页参数列表 - [显示名, CANopen索引, 子索引, 单位描述]
+## 索引对应CiA 402协议的对象字典
 const CONFIG_ITEMS = [
-	["Mode", 0x6060, 0, "drive mode"],
-	["Control Word", 0x6040, 0, "CiA 402"],
-	["Target Speed", 0x60FF, 0, "rpm"],
-	["Target Torque", 0x6071, 0, "permille"],
-	["PID Kp", 0x2010, 0, "proportional"],
-	["PID Ki", 0x2011, 0, "integral"],
-	["PID Kd", 0x2012, 0, "derivative"],
-	["Current Limit", 0x2013, 0, "amps"],
-	["Save EEPROM", 0x1010, 1, "persist"],
+	["cfg_mode", 0x6060, 0, "cfg_drive_mode"],           # 驱动模式
+	["cfg_control_word", 0x6040, 0, "cfg_cia_402"],       # 控制字
+	["cfg_target_speed", 0x60FF, 0, "cfg_rpm"],           # 目标速度
+	["cfg_target_torque", 0x6071, 0, "cfg_permille"],     # 目标转矩
+	["cfg_pid_kp", 0x2010, 0, "cfg_proportional"],        # PID比例系数
+	["cfg_pid_ki", 0x2011, 0, "cfg_integral"],            # PID积分系数
+	["cfg_pid_kd", 0x2012, 0, "cfg_derivative"],          # PID微分系数
+	["cfg_current_limit", 0x2013, 0, "cfg_amps"],         # 电流限制
+	["cfg_save_eeprom", 0x1010, 1, "cfg_persist"],        # 保存到EEPROM
 ]
-const OTA_ITEMS = ["LOAD FIRMWARE", "SEND TO DONGLE", "VERIFY MD5", "FLASH MOTOR"]
+const OTA_ITEM_KEYS = ["ota_load", "ota_send", "ota_verify", "ota_flash"]  # OTA升级步骤
 
-# Verified RGB30 raw /dev/input/js0 button IDs from the project memory.
+## RGB30手柄按键映射 - 直接读取/dev/input/js0的原始按键ID
+## 优先使用此映射，响应更直接
 const RGB30_RAW_BUTTONS = {
-	0: "back",
-	1: "confirm",
-	2: "enable",
-	3: "disable",
-	4: "jog_ccw",
-	5: "jog_cw",
-	6: "estop",
-	7: "r2",
-	8: "estop",
-	9: "menu",
-	13: "up",
-	14: "down",
-	15: "left",
-	16: "right",
+	0: "back",      # 返回键
+	1: "confirm",   # 确认键(A)
+	2: "enable",    # 使能键(X)
+	3: "disable",   # 失能键(Y)
+	4: "jog_ccw",   # 逆时针点动(L1)
+	5: "jog_cw",    # 顺时针点动(R1)
+	6: "estop",     # 急停(L2)
+	7: "r2",        # R2(保留)
+	8: "estop",     # 急停(备用)
+	9: "menu",      # 菜单/切页(START)
+	13: "up",       # 上
+	14: "down",     # 下
+	15: "left",     # 左
+	16: "right",    # 右
 }
 
-# Fallback for Godot/SDL normalized joypad events. The raw reader is preferred.
+## Godot/SDL标准手柄按键映射 - 备用方案
+## 当/dev/input/js0读取失败时使用
 const GODOT_STANDARD_BUTTONS = {
 	0: "confirm",
 	1: "back",
@@ -70,48 +89,64 @@ const GODOT_STANDARD_BUTTONS = {
 	14: "right",
 }
 
-var font: Font
-var udp = PacketPeerUDP.new()
-var motor = MotorDataScript.new()
+## 核心对象
+var font: Font                              # 当前字体
+var udp = PacketPeerUDP.new()               # UDP通信对象
+var motor = MotorDataScript.new()           # 电机数据实例
 
-var current_tab = 0
-var selected = [0, 0, 0]
-var status_msg = ""
-var status_kind = "info"
-var status_until_msec = 0
-var result_msg = "No SDO transaction"
-var last_heartbeat_msec = 0
-var last_rx_msec = 0
-var udp_ready = false
+## 语言选择状态
+var language_selected = false               # 是否已选择语言
+var selected_language = 0                   # 当前选中的语言索引
+var ui_lang = UiText.LANG_ZH               # 当前界面语言
 
-var firmware_data = PackedByteArray()
-var firmware_md5 = ""
-var firmware_name = ""
-var firmware_size = 0
-var ota_state = "idle"
-var ota_progress = 0
-var ota_speed_kbps = 0.0
-var ota_log: Array[String] = []
-var ota_offset = 0
-var ota_started = false
-var ota_start_msec = 0
-var last_ota_send_msec = 0
+## 页面导航状态
+var current_tab = 0                         # 当前页面(0=监控, 1=配置, 2=OTA)
+var selected = [0, 0, 0]                    # 各页面当前选中项索引
 
-var raw_thread: Thread
-var raw_mutex = Mutex.new()
-var raw_queue: Array[int] = []
-var raw_running = false
-var raw_input_ok = false
-var last_input_label = "none"
-var last_raw_button = -1
-var godot_input_enabled = false
+## 状态提示
+var status_msg = ""                         # 状态提示文本
+var status_kind = "info"                    # 提示类型(info/warn/error)
+var status_until_msec = 0                   # 提示消失时间戳
+var result_msg = ""                         # SDO读取结果
+
+## UDP连接状态
+var last_heartbeat_msec = 0                 # 上次心跳时间
+var last_rx_msec = 0                        # 上次收到数据时间
+var udp_ready = false                       # UDP是否就绪
+
+## OTA固件升级状态
+var firmware_data = PackedByteArray()       # 固件二进制数据
+var firmware_md5 = ""                       # 固件MD5校验值
+var firmware_name = ""                      # 固件文件名
+var firmware_size = 0                       # 固件大小(字节)
+var ota_state = "idle"                      # OTA状态(idle/ready/sending/verify/done/error)
+var ota_progress = 0                        # 传输进度(0-100)
+var ota_speed_kbps = 0.0                    # 传输速度(KB/s)
+var ota_log: Array[String] = []             # OTA日志队列
+var ota_offset = 0                          # 当前传输偏移量
+var ota_started = false                     # 是否已发送ota_start命令
+var ota_start_msec = 0                      # 传输开始时间
+var last_ota_send_msec = 0                  # 上次发送数据块时间
+
+## 手柄输入状态 - 使用独立线程读取/dev/input/js0
+var raw_thread: Thread                      # 输入读取线程
+var raw_mutex = Mutex.new()                 # 线程互斥锁
+var raw_queue: Array[int] = []              # 按键事件队列
+var raw_running = false                     # 线程运行标志
+var raw_input_ok = false                    # /dev/input/js0是否可用
+var last_input_label = "none"               # 最近按键调试标签
+var last_raw_button = -1                    # 最近原始按键ID
+var godot_input_enabled = false             # 是否启用Godot标准输入(备用)
 
 
+## 应用初始化
 func _ready() -> void:
+	# 获取系统字体，失败则使用备用字体
 	font = get_theme_default_font()
 	if font == null:
 		font = ThemeDB.fallback_font
 
+	# 绑定本地UDP端口，设置目标地址(ESP32网关)
 	var err = udp.bind(AppSettings.LOCAL_UDP_PORT, "0.0.0.0")
 	if err == OK:
 		udp.set_dest_address(AppSettings.DONGLE_IP, AppSettings.DONGLE_UDP_PORT)
@@ -120,6 +155,7 @@ func _ready() -> void:
 	else:
 		_set_status("UDP bind failed: %d" % err, "error")
 
+	# 启动手柄输入线程
 	_start_raw_input()
 	_log_ota("Godot terminal ready")
 	set_process(true)
@@ -131,18 +167,29 @@ func _exit_tree() -> void:
 		raw_thread.wait_to_finish()
 
 
+## 主循环 - 每帧执行
 func _process(_delta: float) -> void:
 	var now = Time.get_ticks_msec()
+	# 处理手柄输入队列
 	_drain_raw_input()
+	# 语言未选择时只渲染语言选择界面
+	if not language_selected:
+		queue_redraw()
+		return
+
+	# 轮询UDP接收电机数据
 	_poll_udp()
 
+	# 定时发送心跳包维持连接
 	if udp_ready and now - last_heartbeat_msec >= AppSettings.HEARTBEAT_INTERVAL_MS:
 		_send(Protocol.heartbeat())
 		last_heartbeat_msec = now
 
+	# 超过1.5秒未收到数据则标记电机离线
 	if last_rx_msec > 0 and now - last_rx_msec > 1500:
 		motor.alive = false
 
+	# 处理OTA传输逻辑
 	_process_ota(now)
 	queue_redraw()
 
@@ -154,30 +201,37 @@ func _input(event: InputEvent) -> void:
 		_handle_godot_joy_button(event.button_index, event.pressed)
 
 
+## 渲染入口 - 根据当前状态绘制对应界面
 func _draw() -> void:
-	_draw_background()
-	_draw_header()
-	_draw_tabs()
+	_draw_background()           # 绘制网格背景
+	if not language_selected:
+		_draw_language_select()  # 语言选择界面
+		return
 
+	_draw_header()               # 顶部标题栏(LINK/UDP状态指示)
+	_draw_tabs()                 # 页面标签栏(监控/配置/升级)
+
+	# 根据当前页面绘制内容
 	match current_tab:
 		0:
-			_draw_monitor_page()
+			_draw_monitor_page()   # 监控页: 命令列表 + 遥测数据 + 波形图
 		1:
-			_draw_config_page()
+			_draw_config_page()    # 配置页: 对象字典参数读写
 		2:
-			_draw_ota_page()
+			_draw_ota_page()       # OTA页: 固件加载/传输/校验/刷写
 
-	_draw_status_overlay()
-	_draw_footer()
+	_draw_status_overlay()       # 状态提示浮层
+	_draw_footer()               # 底部快捷键提示栏
 
 
+## 启动手柄输入线程 - 直接读取Linux /dev/input/js0设备
 func _start_raw_input() -> void:
 	raw_running = true
 	raw_thread = Thread.new()
 	var err = raw_thread.start(Callable(self, "_raw_input_loop"))
 	if err != OK:
 		raw_input_ok = false
-		godot_input_enabled = true
+		godot_input_enabled = true  # 回退到Godot标准输入
 		_set_status("Raw input thread failed; using Godot joypad fallback", "warn")
 
 
@@ -276,25 +330,29 @@ func _handle_key(keycode: int) -> void:
 
 
 func _handle_action(action: String) -> void:
+	if not language_selected:
+		_handle_language_action(action)
+		return
+
 	match action:
 		"menu":
-			current_tab = (current_tab + 1) % TAB_NAMES.size()
-			_set_status("PAGE %s" % TAB_NAMES[current_tab])
+			current_tab = (current_tab + 1) % TAB_KEYS.size()
+			_set_status("PAGE %s" % _tab_name(current_tab))
 		"up":
 			selected[current_tab] = max(0, int(selected[current_tab]) - 1)
 		"down":
-			var max_idx = MONITOR_ITEMS.size() - 1
+			var max_idx = MONITOR_ITEM_KEYS.size() - 1
 			if current_tab == 1:
 				max_idx = CONFIG_ITEMS.size() - 1
 			elif current_tab == 2:
-				max_idx = OTA_ITEMS.size() - 1
+				max_idx = OTA_ITEM_KEYS.size() - 1
 			selected[current_tab] = min(max_idx, int(selected[current_tab]) + 1)
 		"left":
-			current_tab = (current_tab + TAB_NAMES.size() - 1) % TAB_NAMES.size()
-			_set_status("PAGE %s" % TAB_NAMES[current_tab])
+			current_tab = (current_tab + TAB_KEYS.size() - 1) % TAB_KEYS.size()
+			_set_status("PAGE %s" % _tab_name(current_tab))
 		"right":
-			current_tab = (current_tab + 1) % TAB_NAMES.size()
-			_set_status("PAGE %s" % TAB_NAMES[current_tab])
+			current_tab = (current_tab + 1) % TAB_KEYS.size()
+			_set_status("PAGE %s" % _tab_name(current_tab))
 		"confirm":
 			_confirm_current_selection()
 		"back":
@@ -315,6 +373,20 @@ func _handle_action(action: String) -> void:
 			_set_status("R2 reserved")
 
 
+func _handle_language_action(action: String) -> void:
+	match action:
+		"up", "left":
+			selected_language = (selected_language + LANGUAGE_OPTIONS.size() - 1) % LANGUAGE_OPTIONS.size()
+			ui_lang = LANGUAGE_OPTIONS[selected_language]
+		"down", "right":
+			selected_language = (selected_language + 1) % LANGUAGE_OPTIONS.size()
+			ui_lang = LANGUAGE_OPTIONS[selected_language]
+		"confirm":
+			language_selected = true
+			ui_lang = LANGUAGE_OPTIONS[selected_language]
+			_set_status("LANGUAGE %s" % ui_lang.to_upper())
+
+
 func _confirm_current_selection() -> void:
 	if current_tab == 0:
 		match int(selected[0]):
@@ -330,10 +402,10 @@ func _confirm_current_selection() -> void:
 				_send(Protocol.jog_start(AppSettings.DEFAULT_NODE_ID, "ccw", 500), "Jog CCW")
 	elif current_tab == 1:
 		var item: Array = CONFIG_ITEMS[int(selected[1])]
-		var name: String = item[0]
+		var name_key: String = item[0]
 		var index: int = item[1]
 		var sub: int = item[2]
-		if name == "Save EEPROM":
+		if name_key == "cfg_save_eeprom":
 			_send(Protocol.sdo_write(AppSettings.DEFAULT_NODE_ID, index, sub, 0x65766173), "Save EEPROM")
 		else:
 			result_msg = "Reading 0x%s..." % _hex(index)
@@ -352,15 +424,17 @@ func _confirm_current_selection() -> void:
 				_log_ota("Flash command sent")
 
 
+## 轮询UDP接收缓冲区 - 处理所有待处理的数据包
 func _poll_udp() -> void:
 	if not udp_ready:
 		return
 	while udp.get_available_packet_count() > 0:
 		var raw = udp.get_packet().get_string_from_utf8()
-		var data = Protocol.parse(raw)
-		_handle_message(data)
+		var data = Protocol.parse(raw)  # 解析JSON消息
+		_handle_message(data)           # 分发处理
 
 
+## 消息分发处理 - 根据cmd字段路由到对应处理器
 func _handle_message(data: Dictionary) -> void:
 	last_rx_msec = Time.get_ticks_msec()
 	var cmd = str(data.get("cmd", ""))
@@ -370,14 +444,14 @@ func _handle_message(data: Dictionary) -> void:
 		payload["cmd"] = cmd
 
 	match cmd:
-		"motor_status":
+		"motor_status":        # 电机状态上报(周期性)
 			motor.update_from_dict(payload)
 			motor.alive = true
-		"sdo_read_result":
+		"sdo_read_result":     # SDO读取结果
 			_handle_sdo_result(payload)
-		"ota_status":
+		"ota_status":          # OTA升级状态
 			_handle_ota_status(payload)
-		"ack":
+		"ack":                 # 通用应答
 			var status = str(payload.get("status", ""))
 			var msg = str(payload.get("msg", ""))
 			var text = "OK: %s" % msg if status == "ok" else "ERR: %s" % msg
@@ -425,29 +499,36 @@ func _send(message: String, ui_msg: String = "", kind: String = "info") -> bool:
 	return false
 
 
+## OTA传输状态机 - 每帧调用，按固定间隔发送固件数据块
+## 流程: ota_start → 分块发送(ota_chunk) → verify → flash
 func _process_ota(now: int) -> void:
 	if ota_state != "sending":
 		return
+	# 控制发送速率，避免网络拥塞
 	if now - last_ota_send_msec < AppSettings.OTA_SEND_INTERVAL_MS:
 		return
 	last_ota_send_msec = now
 
+	# 第一次发送: 先发ota_start通知固件大小和MD5
 	if not ota_started:
 		_send(Protocol.ota_start(firmware_size, firmware_md5))
 		ota_started = true
 		return
 
+	# 传输完成: 切换到校验状态
 	if ota_offset >= firmware_size:
 		ota_state = "verify"
 		ota_progress = 100
 		_log_ota("Transfer done %.1f KB/s" % ota_speed_kbps)
 		return
 
+	# 分块发送: 每次OTA_CHUNK_SIZE字节，Base64编码
 	var end = min(ota_offset + AppSettings.OTA_CHUNK_SIZE, firmware_size)
 	var chunk = firmware_data.slice(ota_offset, end)
 	_send(Protocol.ota_chunk(ota_offset, Marshalls.raw_to_base64(chunk)))
 	ota_offset = end
 
+	# 更新进度和速度
 	var elapsed = max(0.001, float(now - ota_start_msec) / 1000.0)
 	ota_progress = int(float(ota_offset) * 100.0 / float(firmware_size))
 	ota_speed_kbps = (float(ota_offset) / 1024.0) / elapsed
@@ -495,29 +576,45 @@ func _draw_background() -> void:
 	draw_circle(Vector2(110, 660), 170, Color(C_ACCENT, 0.045))
 
 
+func _draw_language_select() -> void:
+	_draw_panel(Rect2(78, 92, 564, 448), C_PANEL, C_LINE)
+	_draw_text(_t("language_title"), 108, 136, C_TEXT, 24)
+	_draw_text(_t("language_subtitle"), 108, 184, C_DIM, 14)
+	var labels = [_t("language_zh"), _t("language_en")]
+	for i in labels.size():
+		var rect = Rect2(128, 250 + i * 82, 464, 58)
+		draw_rect(rect, C_INPUT, true)
+		draw_rect(rect, C_ACCENT if i == selected_language else C_LINE, false, 2.0 if i == selected_language else 1.0)
+		if i == selected_language:
+			draw_rect(Rect2(rect.position.x, rect.position.y, 6, rect.size.y), C_ACCENT, true)
+		_draw_text(labels[i], rect.position.x, rect.position.y + 17, C_TEXT, 18, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x)
+	_draw_panel(Rect2(78, 590, 564, 48), C_INPUT, C_LINE)
+	_draw_text(_t("language_hint"), 78, 606, C_DIM, 14, HORIZONTAL_ALIGNMENT_CENTER, 564)
+
+
 func _draw_header() -> void:
 	_draw_panel(Rect2(14, 12, 692, 64), C_PANEL, C_LINE)
-	_draw_text("AGV MOTOR DIAGNOSTIC TERMINAL", 30, 28, C_TEXT, 20)
+	_draw_text(_t("app_title"), 30, 28, C_TEXT, 20)
 	var link = motor.alive or (last_rx_msec > 0 and Time.get_ticks_msec() - last_rx_msec <= 1500)
 	_draw_status_chip(Rect2(505, 23, 84, 24), "LINK", link)
 	_draw_status_chip(Rect2(598, 23, 84, 24), "UDP", udp_ready)
 	_draw_text("%d ms" % AppSettings.HEARTBEAT_INTERVAL_MS, 622, 56, C_DIM, 10)
-	_draw_text("RGB30 | 720*720 | CANopen over UDP | Node%d" % AppSettings.DEFAULT_NODE_ID, 32, 56, C_TEXT, 10)
+	_draw_text(_t("header_subtitle") % AppSettings.DEFAULT_NODE_ID, 32, 56, C_TEXT, 10)
 
 
 func _draw_tabs() -> void:
 	var x = 18.0
-	for i in TAB_NAMES.size():
+	for i in TAB_KEYS.size():
 		var rect = Rect2(x, 88, 218, 38)
 		var active = i == current_tab
 		draw_rect(rect, C_ACCENT if active else C_PANEL_2, true)
 		draw_rect(rect, C_ACCENT if active else C_LINE, false, 1.0)
-		_draw_text(TAB_NAMES[i], rect.position.x, rect.position.y + 9, C_TEXT, 15, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x)
+		_draw_text(_tab_name(i), rect.position.x, rect.position.y + 9, C_TEXT, 15, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x)
 		x += 234
 
 
 func _draw_monitor_page() -> void:
-	_draw_action_rail(Rect2(18, 140, 188, 360), MONITOR_ITEMS, int(selected[0]))
+	_draw_action_rail(Rect2(18, 140, 188, 360), _texts(MONITOR_ITEM_KEYS), int(selected[0]))
 	_draw_telemetry_grid(Rect2(224, 140, 478, 190))
 	_draw_waveform_panel(Rect2(224, 346, 478, 196))
 	_draw_command_matrix(Rect2(18, 516, 188, 88))
@@ -526,7 +623,7 @@ func _draw_monitor_page() -> void:
 
 func _draw_config_page() -> void:
 	_draw_panel(Rect2(18, 140, 684, 386), C_PANEL, C_LINE)
-	_draw_text("OBJECT DICTIONARY        A READ SELECTED  D-PAD NAVIGATE  START PAGE", 36, 158, C_ACCENT, 13)
+	_draw_text(_t("config_header"), 36, 158, C_ACCENT, 13)
 	var y = 194.0
 	for i in CONFIG_ITEMS.size():
 		var item: Array = CONFIG_ITEMS[i]
@@ -535,42 +632,42 @@ func _draw_config_page() -> void:
 		draw_rect(row_rect, C_LINE, false, 1.0)
 		var tc = C_TEXT
 		var dc = C_DIM
-		_draw_text(item[0], 46, y + 9, tc, 12)
+		_draw_text(_t(item[0]), 46, y + 9, tc, 12)
 		_draw_text("0x%s:%d" % [_hex(item[1]), item[2]], 288, y + 9, dc, 12)
-		_draw_text(item[3], 408, y + 9, dc, 12)
+		_draw_text(_t(item[3]), 408, y + 9, dc, 12)
 		y += 36
 	var selected_rect = Rect2(34, 194 + int(selected[1]) * 36, 652, 32)
 	draw_rect(selected_rect, C_ACCENT, false, 2.0)
 	draw_rect(Rect2(selected_rect.position.x, selected_rect.position.y, 5, selected_rect.size.y), C_ACCENT, true)
 	_draw_panel(Rect2(18, 542, 684, 62), C_INPUT, C_LINE)
-	_draw_text("SDO RESULT", 36, 562, C_TEXT, 11)
-	_draw_text(result_msg, 36, 586, C_TEXT, 11)
+	_draw_text(_t("sdo_result"), 36, 562, C_TEXT, 11)
+	_draw_text(result_msg if result_msg != "" else _t("no_sdo"), 36, 586, C_TEXT, 11)
 
 
 func _draw_ota_page() -> void:
 	_draw_panel(Rect2(18, 140, 684, 120), C_PANEL, C_LINE)
-	var fw = firmware_name if firmware_name != "" else "No firmware loaded"
-	var meta = "Copy firmware to /storage/firmware.bin"
+	var fw = firmware_name if firmware_name != "" else _t("no_firmware")
+	var meta = _t("copy_firmware")
 	if firmware_size > 0:
 		meta = "Size %.1f KB  MD5 %s..." % [float(firmware_size) / 1024.0, firmware_md5.substr(0, 16)]
-	_draw_text("FIRMWARE UPDATE        STATUS: %s  |  %s" % [fw, meta], 36, 160, C_ACCENT, 13)
+	_draw_text(_t("firmware_update") % [fw, meta], 36, 160, C_ACCENT, 13)
 
-	_draw_action_rail(Rect2(18, 284, 260, 226), OTA_ITEMS, int(selected[2]))
+	_draw_action_rail(Rect2(18, 284, 260, 226), _texts(OTA_ITEM_KEYS), int(selected[2]))
 	_draw_panel(Rect2(300, 284, 402, 226), C_PANEL, C_LINE)
-	_draw_text("TRANSFER STATE: %s" % ota_state.to_upper(), 318, 306, C_TEXT, 11)
+	_draw_text(_t("transfer_state") % ota_state.to_upper(), 318, 306, C_TEXT, 11)
 	_draw_progress_bar(Rect2(318, 382, 360, 30), ota_progress, "%d%%  %.1f KB/s" % [ota_progress, ota_speed_kbps])
-	_draw_text("Target: ESP32 CAN Dongle 192.168.4.1:5000", 318, 446, C_TEXT, 11)
+	_draw_text(_t("target_dongle"), 318, 446, C_TEXT, 11)
 
 	_draw_panel(Rect2(18, 548, 684, 92), C_INPUT, C_LINE)
-	var log_head = "OTA LOG"
+	var log_head = _t("ota_log")
 	if not ota_log.is_empty():
-		log_head = "OTA LOG: %s" % ota_log.back()
+		log_head = _t("ota_log_line") % ota_log.back()
 	_draw_text(log_head, 36, 568, C_TEXT, 11)
 
 
 func _draw_action_rail(rect: Rect2, items: Array, selected_index: int) -> void:
 	_draw_panel(rect, C_PANEL, C_LINE)
-	_draw_text("COMMANDS", rect.position.x + 18, rect.position.y + 18, C_DIM, 14)
+	_draw_text(_t("commands"), rect.position.x + 18, rect.position.y + 18, C_DIM, 14)
 	var y = rect.position.y + 48
 	for i in items.size():
 		var is_sel = i == selected_index
@@ -586,14 +683,14 @@ func _draw_action_rail(rect: Rect2, items: Array, selected_index: int) -> void:
 
 func _draw_telemetry_grid(rect: Rect2) -> void:
 	_draw_panel(rect, C_PANEL, C_LINE)
-	_draw_text("REAL-TIME TELEMETRY", rect.position.x + 18, rect.position.y + 18, C_DIM, 14)
+	_draw_text(_t("telemetry"), rect.position.x + 18, rect.position.y + 18, C_DIM, 14)
 	var cards = [
-		["CURRENT", "%.2f" % motor.current, "A", C_ACCENT],
-		["VOLTAGE", "%.1f" % motor.voltage, "V", C_ACCENT_2],
-		["SPEED", "%d" % motor.speed, "rpm", C_WARN],
-		["POSITION", "%.1f" % motor.position, "deg", C_TEXT],
-		["TORQUE", "%.2f" % motor.torque, "Nm", C_GREEN],
-		["STATUS", motor.get_status_text(), "", C_RED if motor.is_fault() else C_GREEN],
+		[_t("metric_current"), "%.2f" % motor.current, "A", C_ACCENT],
+		[_t("metric_voltage"), "%.1f" % motor.voltage, "V", C_ACCENT_2],
+		[_t("metric_speed"), "%d" % motor.speed, "rpm", C_WARN],
+		[_t("metric_position"), "%.1f" % motor.position, "deg", C_TEXT],
+		[_t("metric_torque"), "%.2f" % motor.torque, "Nm", C_GREEN],
+		[_t("metric_status"), motor.get_status_text(), "", C_RED if motor.is_fault() else C_GREEN],
 	]
 	var idx = 0
 	for row in 2:
@@ -615,7 +712,7 @@ func _draw_metric_card(rect: Rect2, label: String, value: String, unit: String, 
 
 func _draw_waveform_panel(rect: Rect2) -> void:
 	_draw_panel(rect, C_PANEL, C_LINE)
-	_draw_text("CURRENT WAVEFORM", rect.position.x + 18, rect.position.y + 18, C_DIM, 14)
+	_draw_text(_t("waveform"), rect.position.x + 18, rect.position.y + 18, C_DIM, 14)
 	var plot = Rect2(rect.position.x + 18, rect.position.y + 46, rect.size.x - 36, rect.size.y - 66)
 	draw_rect(plot, C_INPUT, true)
 	for i in range(1, 5):
@@ -629,7 +726,7 @@ func _draw_waveform_panel(rect: Rect2) -> void:
 	var vals = motor.current_history
 	var n = min(vals.size(), 96)
 	if n < 2:
-		_draw_text("Waiting for motor_status packets...", plot.position.x, plot.position.y + plot.size.y * 0.5 - 8, C_DIM, 15, HORIZONTAL_ALIGNMENT_CENTER, plot.size.x)
+		_draw_text(_t("waiting_packets"), plot.position.x, plot.position.y + plot.size.y * 0.5 - 8, C_DIM, 15, HORIZONTAL_ALIGNMENT_CENTER, plot.size.x)
 		return
 	var start = vals.size() - n
 	var vmin = vals[start]
@@ -651,19 +748,19 @@ func _draw_waveform_panel(rect: Rect2) -> void:
 
 func _draw_command_matrix(rect: Rect2) -> void:
 	_draw_panel(rect, C_PANEL, C_LINE)
-	_draw_text("HOTKEYS", rect.position.x + 14, rect.position.y + 16, C_DIM, 13)
-	_draw_text("X ENABLE", rect.position.x + 14, rect.position.y + 42, C_ACCENT, 13)
-	_draw_text("Y DISABLE", rect.position.x + 96, rect.position.y + 42, C_WARN, 13)
+	_draw_text(_t("hotkeys"), rect.position.x + 14, rect.position.y + 16, C_DIM, 13)
+	_draw_text("X %s" % _t("cmd_enable"), rect.position.x + 14, rect.position.y + 42, C_ACCENT, 13)
+	_draw_text("Y %s" % _t("cmd_disable"), rect.position.x + 96, rect.position.y + 42, C_WARN, 13)
 	_draw_text("L1/R1 JOG", rect.position.x + 14, rect.position.y + 66, C_TEXT, 13)
-	_draw_text("L2/SEL STOP", rect.position.x + 96, rect.position.y + 66, C_RED, 13)
+	_draw_text("L2/SEL %s" % _t("cmd_estop"), rect.position.x + 96, rect.position.y + 66, C_RED, 13)
 
 
 func _draw_live_debug(rect: Rect2) -> void:
 	_draw_panel(rect, C_INPUT, C_LINE)
 	var input_state = "RAW /dev/input/js0" if raw_input_ok else "GODOT FALLBACK"
-	_draw_text("INPUT", rect.position.x + 14, rect.position.y + 16, C_DIM, 13)
+	_draw_text(_t("input"), rect.position.x + 14, rect.position.y + 16, C_DIM, 13)
 	_draw_text(input_state, rect.position.x + 76, rect.position.y + 16, C_ACCENT if raw_input_ok else C_WARN, 13)
-	_draw_text("LAST", rect.position.x + 270, rect.position.y + 16, C_DIM, 13)
+	_draw_text(_t("last"), rect.position.x + 270, rect.position.y + 16, C_DIM, 13)
 	_draw_text(last_input_label, rect.position.x + 314, rect.position.y + 16, C_TEXT, 13)
 
 
@@ -683,7 +780,7 @@ func _draw_status_overlay() -> void:
 
 func _draw_footer() -> void:
 	_draw_panel(Rect2(14, 670, 692, 36), C_PANEL, C_LINE)
-	_draw_text("START page   D-PAD select   A execute   B stop   X enable   Y disable   L2/SEL E-STOP", 24, 681, C_DIM, 12)
+	_draw_text(_t("footer"), 24, 681, C_DIM, 12)
 
 
 func _draw_status_chip(rect: Rect2, label: String, ok: bool) -> void:
@@ -715,6 +812,21 @@ func _draw_text(text: String, x: float, y: float, color: Color, font_size: int =
 	if font == null:
 		return
 	draw_string(font, Vector2(x, y + font_size), text, align, width, font_size, color)
+
+
+func _t(key: String) -> String:
+	return UiText.text(ui_lang, key)
+
+
+func _tab_name(index: int) -> String:
+	return _t(TAB_KEYS[index])
+
+
+func _texts(keys: Array) -> Array[String]:
+	var values: Array[String] = []
+	for key in keys:
+		values.append(_t(str(key)))
+	return values
 
 
 func _set_status(message: String, kind: String = "info") -> void:

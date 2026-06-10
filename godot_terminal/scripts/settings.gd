@@ -1,3 +1,7 @@
+## 应用全局配置 - settings.gd
+## 作用: 集中管理所有常量配置，包括网络参数、UI尺寸、输入映射等
+## 被其他所有脚本引用，是项目的配置中心
+
 extends RefCounted
 class_name AppSettings
 
