@@ -433,15 +433,20 @@ func _handle_action(action: String) -> void:
 func _handle_language_action(action: String) -> void:
 	match action:
 		"up", "left":
-			selected_language = (selected_language + LANGUAGE_OPTIONS.size() - 1) % LANGUAGE_OPTIONS.size()
-			ui_lang = LANGUAGE_OPTIONS[selected_language]
+			selected_language = max(0, selected_language - 1)
+			if selected_language < LANGUAGE_OPTIONS.size():
+				ui_lang = LANGUAGE_OPTIONS[selected_language]
 		"down", "right":
-			selected_language = (selected_language + 1) % LANGUAGE_OPTIONS.size()
-			ui_lang = LANGUAGE_OPTIONS[selected_language]
+			selected_language = min(2, selected_language + 1)
+			if selected_language < LANGUAGE_OPTIONS.size():
+				ui_lang = LANGUAGE_OPTIONS[selected_language]
 		"confirm":
-			language_selected = true
-			ui_lang = LANGUAGE_OPTIONS[selected_language]
-			_set_status("LANGUAGE %s" % ui_lang.to_upper())
+			if selected_language == 2:
+				OS.execute("poweroff", [])
+			else:
+				language_selected = true
+				ui_lang = LANGUAGE_OPTIONS[selected_language]
+				_set_status("LANGUAGE %s" % ui_lang.to_upper())
 
 
 func _return_to_language_select() -> void:
@@ -717,20 +722,21 @@ func _draw_background() -> void:
 
 
 func _draw_language_select() -> void:
-	_draw_panel(Rect2(78, 92, 564, 448), C_PANEL, C_LINE)
-	_draw_text(_t("language_title"), 108, 136, C_TEXT, 24)
-	_draw_text(_t("language_subtitle"), 108, 184, C_DIM, 14)
-	var labels = [_t("language_zh"), _t("language_en")]
+	_draw_panel(Rect2(78, 54, 564, 528), C_PANEL, C_LINE)
+	_draw_text(_t("language_title"), 108, 96, C_TEXT, 24)
+	_draw_text(_t("language_subtitle"), 108, 144, C_DIM, 14)
+	var labels = [_t("language_zh"), _t("language_en"), _t("language_shutdown")]
 	for i in labels.size():
-		var rect = Rect2(128, 250 + i * 82, 464, 58)
+		var rect = Rect2(128, 200 + i * 74, 464, 52)
 		draw_rect(rect, C_INPUT, true)
 		draw_rect(rect, C_LINE, false, 1.0)
-		_draw_text(labels[i], rect.position.x, rect.position.y + 17, C_TEXT, 18, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x)
-	var selected_rect = Rect2(128, 250 + selected_language * 82, 464, 58)
-	draw_rect(selected_rect, C_ACCENT, false, 2.0)
-	draw_rect(Rect2(selected_rect.position.x, selected_rect.position.y, 6, selected_rect.size.y), C_ACCENT, true)
-	_draw_panel(Rect2(78, 590, 564, 48), C_INPUT, C_LINE)
-	_draw_text(_t("language_hint"), 78, 606, C_DIM, 14, HORIZONTAL_ALIGNMENT_CENTER, 564)
+		var is_back = i == 2
+		_draw_text(labels[i], rect.position.x, rect.position.y + 15, C_DIM if is_back else C_TEXT, 17, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x)
+	var selected_rect = Rect2(128, 200 + selected_language * 74, 464, 52)
+	draw_rect(selected_rect, C_WARN if selected_language == 2 else C_ACCENT, false, 2.0)
+	draw_rect(Rect2(selected_rect.position.x, selected_rect.position.y, 6, selected_rect.size.y), C_WARN if selected_language == 2 else C_ACCENT, true)
+	_draw_panel(Rect2(78, 610, 564, 48), C_INPUT, C_LINE)
+	_draw_text(_t("language_hint"), 78, 626, C_DIM, 14, HORIZONTAL_ALIGNMENT_CENTER, 564)
 
 
 func _draw_header() -> void:
