@@ -74,7 +74,7 @@ var font: Font
 var udp = PacketPeerUDP.new()
 var motor = MotorDataScript.new()
 
-var current_tab = 2
+var current_tab = 0
 var selected = [0, 0, 0]
 var status_msg = ""
 var status_kind = "info"
@@ -144,7 +144,6 @@ func _process(_delta: float) -> void:
 		motor.alive = false
 
 	_process_ota(now)
-	current_tab = 2
 	queue_redraw()
 
 
@@ -503,8 +502,7 @@ func _draw_header() -> void:
 	_draw_status_chip(Rect2(505, 23, 84, 24), "LINK", link)
 	_draw_status_chip(Rect2(598, 23, 84, 24), "UDP", udp_ready)
 	_draw_text("%d ms" % AppSettings.HEARTBEAT_INTERVAL_MS, 622, 56, C_DIM, 10)
-	_draw_text("RGB30 720", 32, 56, C_TEXT, 10)
-	_draw_text("UDP NODE %d" % AppSettings.DEFAULT_NODE_ID, 96, 56, C_TEXT, 10)
+	_draw_text("RGB30 | 720*720 | CANopen over UDP | Node%d" % AppSettings.DEFAULT_NODE_ID, 32, 56, C_TEXT, 10)
 
 
 func _draw_tabs() -> void:
@@ -528,7 +526,7 @@ func _draw_monitor_page() -> void:
 
 func _draw_config_page() -> void:
 	_draw_panel(Rect2(18, 140, 684, 386), C_PANEL, C_LINE)
-	_draw_text("OBJECT DICTIONARY  A READ  D-PAD NAV  START PAGE", 36, 158, C_ACCENT, 14)
+	_draw_text("OBJECT DICTIONARY        A READ SELECTED  D-PAD NAVIGATE  START PAGE", 36, 158, C_ACCENT, 13)
 	var y = 194.0
 	for i in CONFIG_ITEMS.size():
 		var item: Array = CONFIG_ITEMS[i]
@@ -545,7 +543,8 @@ func _draw_config_page() -> void:
 	draw_rect(selected_rect, C_ACCENT, false, 2.0)
 	draw_rect(Rect2(selected_rect.position.x, selected_rect.position.y, 5, selected_rect.size.y), C_ACCENT, true)
 	_draw_panel(Rect2(18, 542, 684, 62), C_INPUT, C_LINE)
-	_draw_text("SDO RESULT: %s" % result_msg, 36, 562, C_TEXT, 11)
+	_draw_text("SDO RESULT", 36, 562, C_TEXT, 11)
+	_draw_text(result_msg, 36, 586, C_TEXT, 11)
 
 
 func _draw_ota_page() -> void:
@@ -554,8 +553,7 @@ func _draw_ota_page() -> void:
 	var meta = "Copy firmware to /storage/firmware.bin"
 	if firmware_size > 0:
 		meta = "Size %.1f KB  MD5 %s..." % [float(firmware_size) / 1024.0, firmware_md5.substr(0, 16)]
-	_draw_text("FIRMWARE UPDATE  %s" % fw, 36, 160, C_ACCENT, 16)
-	_draw_text(meta, 36, 196, C_TEXT, 11)
+	_draw_text("FIRMWARE UPDATE        STATUS: %s  |  %s" % [fw, meta], 36, 160, C_ACCENT, 13)
 
 	_draw_action_rail(Rect2(18, 284, 260, 226), OTA_ITEMS, int(selected[2]))
 	_draw_panel(Rect2(300, 284, 402, 226), C_PANEL, C_LINE)
@@ -568,10 +566,6 @@ func _draw_ota_page() -> void:
 	if not ota_log.is_empty():
 		log_head = "OTA LOG: %s" % ota_log.back()
 	_draw_text(log_head, 36, 568, C_TEXT, 11)
-	var log_y = 591.0
-	for line in ota_log:
-		_draw_text(line, 36, log_y, C_TEXT, 10)
-		log_y += 15
 
 
 func _draw_action_rail(rect: Rect2, items: Array, selected_index: int) -> void:
@@ -689,7 +683,7 @@ func _draw_status_overlay() -> void:
 
 func _draw_footer() -> void:
 	_draw_panel(Rect2(14, 670, 692, 36), C_PANEL, C_LINE)
-	_draw_text("START page   D-PAD select   A execute   B stop   X enable   Y disable   L2/SEL E-STOP", 24, 694, C_DIM, 12)
+	_draw_text("START page   D-PAD select   A execute   B stop   X enable   Y disable   L2/SEL E-STOP", 24, 681, C_DIM, 12)
 
 
 func _draw_status_chip(rect: Rect2, label: String, ok: bool) -> void:
