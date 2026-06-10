@@ -1,7 +1,7 @@
 ## 主控制器 - main.gd
 ## 作用: 应用入口，整合所有功能模块
 ## 职责:
-##   - UI渲染: 绘制监控、配置、OTA三个页面
+##   - UI渲染: 绘制监控、配置、OTA、CAN日志页面
 ##   - 输入处理: 读取/dev/input/js0手柄按键 + Godot键盘事件
 ##   - UDP通信: 与ESP32 CAN网关收发消息
 ##   - OTA固件升级: 加载、分块传输、校验、刷写
@@ -35,7 +35,7 @@ const C_BLACK = Color8(0, 0, 0)          # 黑色
 
 ## UI配置常量
 const LANGUAGE_OPTIONS = [UiText.LANG_ZH, UiText.LANG_EN]  # 支持的语言列表
-const TAB_KEYS = ["tab_monitor", "tab_config", "tab_ota"]   # 页面标签
+const TAB_KEYS = ["tab_monitor", "tab_config", "tab_ota", "tab_can"]   # 页面标签
 const MONITOR_ITEM_KEYS = ["cmd_enable", "cmd_disable", "cmd_estop", "cmd_jog_cw", "cmd_jog_ccw"]  # 监控页命令列表
 
 ## 配置页参数列表 - [显示名, CANopen索引, 子索引, 单位描述]
@@ -52,6 +52,14 @@ const CONFIG_ITEMS = [
 	["cfg_save_eeprom", 0x1010, 1, "cfg_persist"],        # 保存到EEPROM
 ]
 const OTA_ITEM_KEYS = ["ota_load", "ota_send", "ota_verify", "ota_flash"]  # OTA升级步骤
+const CAN_ITEM_KEYS = ["can_filter", "can_reset", "can_pause"]  # CAN日志页操作
+const KEYBOARD_ROWS = [
+	["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"],
+	["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
+	["A", "S", "D", "F", "G", "H", "J", "K", "L"],
+	["Z", "X", "C", "V", "B", "N", "M"],
+	["SHIFT", "-", "_", ":", ".", "SP", "DEL", "CLR", "OK"],
+]
 
 ## RGB30手柄按键映射 - 直接读取/dev/input/js0的原始按键ID
 ## 优先使用此映射，响应更直接
@@ -101,8 +109,8 @@ var selected_language = 0                   # 当前选中的语言索引
 var ui_lang = UiText.LANG_ZH               # 当前界面语言
 
 ## 页面导航状态
-var current_tab = 0                         # 当前页面(0=监控, 1=配置, 2=OTA)
-var selected = [0, 0, 0]                    # 各页面当前选中项索引
+var current_tab = 0                         # 当前页面(0=监控, 1=配置, 2=OTA, 3=CAN日志)
+var selected = [0, 0, 0, 0]                 # 各页面当前选中项索引
 
 ## 状态提示
 var status_msg = ""                         # 状态提示文本
@@ -128,6 +136,15 @@ var ota_offset = 0                          # 当前传输偏移量
 var ota_started = false                     # 是否已发送ota_start命令
 var ota_start_msec = 0                      # 传输开始时间
 var last_ota_send_msec = 0                  # 上次发送数据块时间
+
+## CAN日志页面状态
+var can_filter = ""                         # CAN日志过滤字段
+var can_rows: Array[Dictionary] = []         # CAN/UDP接收日志
+var can_paused = false                      # 暂停刷新
+var keyboard_open = false                   # 是否显示虚拟键盘
+var keyboard_row = 0                        # 虚拟键盘选中行
+var keyboard_col = 0                        # 虚拟键盘选中列
+var keyboard_lowercase = false              # 虚拟键盘是否小写输入
 
 ## 手柄输入状态 - 使用独立线程读取/dev/input/js0
 var raw_thread: Thread                      # 输入读取线程
@@ -227,8 +244,12 @@ func _draw() -> void:
 			_draw_config_page()    # 配置页: 对象字典参数读写
 		2:
 			_draw_ota_page()       # OTA页: 固件加载/传输/校验/刷写
+		3:
+			_draw_can_page()       # CAN日志页: 接收日志 + 过滤输入
 
 	_draw_status_overlay()       # 状态提示浮层
+	if keyboard_open:
+		_draw_virtual_keyboard()
 	_draw_footer()               # 底部快捷键提示栏
 
 
@@ -360,6 +381,9 @@ func _handle_action(action: String) -> void:
 	if not language_selected:
 		_handle_language_action(action)
 		return
+	if keyboard_open:
+		_handle_keyboard_action(action)
+		return
 
 	match action:
 		"menu":
@@ -373,6 +397,8 @@ func _handle_action(action: String) -> void:
 				max_idx = CONFIG_ITEMS.size() - 1
 			elif current_tab == 2:
 				max_idx = OTA_ITEM_KEYS.size() - 1
+			elif current_tab == 3:
+				max_idx = CAN_ITEM_KEYS.size() - 1
 			selected[current_tab] = min(max_idx, int(selected[current_tab]) + 1)
 		"left":
 			current_tab = (current_tab + TAB_KEYS.size() - 1) % TAB_KEYS.size()
@@ -461,6 +487,58 @@ func _confirm_current_selection() -> void:
 			3:
 				_send(Protocol.ota_flash(AppSettings.DEFAULT_NODE_ID), "Flash command sent")
 				_log_ota("Flash command sent")
+	elif current_tab == 3:
+		match int(selected[3]):
+			0:
+				keyboard_open = true
+				keyboard_row = 1
+				keyboard_col = 0
+			1:
+				can_rows.clear()
+				_set_status(_t("can_reset_status"))
+			2:
+				can_paused = not can_paused
+				_set_status(_t("can_paused") if can_paused else _t("can_run_status"))
+
+
+func _handle_keyboard_action(action: String) -> void:
+	match action:
+		"up":
+			keyboard_row = max(0, keyboard_row - 1)
+			keyboard_col = min(keyboard_col, KEYBOARD_ROWS[keyboard_row].size() - 1)
+		"down":
+			keyboard_row = min(KEYBOARD_ROWS.size() - 1, keyboard_row + 1)
+			keyboard_col = min(keyboard_col, KEYBOARD_ROWS[keyboard_row].size() - 1)
+		"left":
+			keyboard_col = max(0, keyboard_col - 1)
+		"right":
+			keyboard_col = min(KEYBOARD_ROWS[keyboard_row].size() - 1, keyboard_col + 1)
+		"confirm":
+			_apply_keyboard_key(_keyboard_key_value(keyboard_row, keyboard_col))
+		"back":
+			keyboard_open = false
+		"language_select":
+			keyboard_open = false
+			_return_to_language_select()
+
+
+func _apply_keyboard_key(key: String) -> void:
+	match key:
+		"SP":
+			if can_filter.length() < 32:
+				can_filter += " "
+		"DEL":
+			if can_filter.length() > 0:
+				can_filter = can_filter.substr(0, can_filter.length() - 1)
+		"CLR":
+			can_filter = ""
+		"OK":
+			keyboard_open = false
+		"SHIFT":
+			keyboard_lowercase = not keyboard_lowercase
+		_:
+			if can_filter.length() < 32:
+				can_filter += key
 
 
 ## 轮询UDP接收缓冲区 - 处理所有待处理的数据包
@@ -470,7 +548,30 @@ func _poll_udp() -> void:
 	while udp.get_available_packet_count() > 0:
 		var raw = udp.get_packet().get_string_from_utf8()
 		var data = Protocol.parse(raw)  # 解析JSON消息
+		_record_can_row(raw, data)
 		_handle_message(data)           # 分发处理
+
+
+func _record_can_row(raw: String, data: Dictionary) -> void:
+	if can_paused:
+		return
+	var cmd = str(data.get("cmd", "packet"))
+	var payload = data
+	if data.has("payload") and typeof(data["payload"]) == TYPE_DICTIONARY:
+		payload = data["payload"]
+	var can_id = str(payload.get("can_id", payload.get("id", "")))
+	var dlc = str(payload.get("dlc", ""))
+	var bytes = str(payload.get("data", payload.get("bytes", "")))
+	var line = Time.get_time_string_from_system() + "  " + cmd
+	if can_id != "":
+		line += "  ID " + can_id
+	if dlc != "":
+		line += "  DLC " + dlc
+	if bytes != "":
+		line += "  " + bytes
+	can_rows.append({"line": line, "raw": raw})
+	while can_rows.size() > 80:
+		can_rows.pop_front()
 
 
 ## 消息分发处理 - 根据cmd字段路由到对应处理器
@@ -643,14 +744,16 @@ func _draw_header() -> void:
 
 
 func _draw_tabs() -> void:
+	var gap = 14.0
+	var tab_w = (684.0 - gap * float(TAB_KEYS.size() - 1)) / float(TAB_KEYS.size())
 	var x = 18.0
 	for i in TAB_KEYS.size():
-		var rect = Rect2(x, 88, 218, 38)
+		var rect = Rect2(x, 88, tab_w, 38)
 		var active = i == current_tab
 		draw_rect(rect, C_ACCENT if active else C_PANEL_2, true)
 		draw_rect(rect, C_ACCENT if active else C_LINE, false, 1.0)
-		_draw_text(_tab_name(i), rect.position.x, rect.position.y + 9, C_TEXT, 15, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x)
-		x += 234
+		_draw_text(_tab_name(i), rect.position.x, rect.position.y + 10, C_TEXT, 12, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x)
+		x += tab_w + gap
 
 
 func _draw_monitor_page() -> void:
@@ -703,6 +806,75 @@ func _draw_ota_page() -> void:
 	if not ota_log.is_empty():
 		log_head = _t("ota_log_line") % ota_log.back()
 	_draw_text(log_head, 36, 568, C_TEXT, 11)
+
+
+func _draw_can_page() -> void:
+	_draw_panel(Rect2(18, 140, 684, 96), C_PANEL, C_LINE)
+	_draw_text(_t("can_header"), 36, 158, C_ACCENT, 12)
+	_draw_text(_t("can_filter_label"), 36, 194, C_DIM, 13)
+	var input_rect = Rect2(112, 188, 474, 30)
+	draw_rect(input_rect, C_INPUT, true)
+	draw_rect(input_rect, C_LINE, false, 1.0)
+	_draw_text(can_filter if can_filter != "" else _t("can_all"), input_rect.position.x + 10, input_rect.position.y + 7, C_TEXT if can_filter != "" else C_DIM_2, 12)
+	if can_paused:
+		_draw_text(_t("can_paused"), 604, 194, C_WARN, 12)
+
+	_draw_action_rail(Rect2(18, 254, 188, 226), _can_action_labels(), int(selected[3]))
+	_draw_panel(Rect2(224, 254, 478, 386), C_PANEL, C_LINE)
+	_draw_text(_t("can_log"), 242, 274, C_DIM, 13)
+	var rows = _filtered_can_rows()
+	if rows.is_empty():
+		_draw_text(_t("can_empty"), 242, 314, C_DIM, 13)
+		return
+	var start = max(0, rows.size() - 16)
+	var y = 310.0
+	for i in range(start, rows.size()):
+		var row: Dictionary = rows[i]
+		_draw_text(str(row.get("line", "")), 242, y, C_TEXT, 10)
+		y += 20
+
+
+func _draw_virtual_keyboard() -> void:
+	var rect = Rect2(28, 338, 664, 318)
+	draw_rect(rect, Color(C_INPUT, 0.98), true)
+	draw_rect(rect, C_ACCENT, false, 2.0)
+	_draw_text(_t("keyboard_title"), rect.position.x + 18, rect.position.y + 12, C_ACCENT, 13)
+	_draw_text(_t("keyboard_hint"), rect.position.x + 210, rect.position.y + 12, C_DIM, 11)
+	_draw_text(_t("can_filter_label"), rect.position.x + 18, rect.position.y + 44, C_DIM, 12)
+	_draw_text(can_filter, rect.position.x + 88, rect.position.y + 44, C_TEXT, 12)
+
+	var key_h = 30.0
+	var gap = 6.0
+	var y = rect.position.y + 82
+	for row_index in KEYBOARD_ROWS.size():
+		var row: Array = KEYBOARD_ROWS[row_index]
+		var key_w = 56.0
+		if row_index == 3:
+			key_w = 62.0
+		elif row_index == 4:
+			key_w = 58.0
+		var row_w = float(row.size()) * key_w + float(row.size() - 1) * gap
+		var x = rect.position.x + (rect.size.x - row_w) * 0.5
+		for col_index in row.size():
+			var r = Rect2(x + col_index * (key_w + gap), y, key_w, key_h)
+			draw_rect(r, C_PANEL, true)
+			draw_rect(r, C_LINE, false, 1.0)
+			var label = _keyboard_key_label(row_index, col_index)
+			_draw_text(label, r.position.x, r.position.y + 7, C_TEXT, 11, HORIZONTAL_ALIGNMENT_CENTER, r.size.x)
+		y += key_h + gap
+
+	var selected_row: Array = KEYBOARD_ROWS[keyboard_row]
+	var selected_key_w = 56.0
+	if keyboard_row == 3:
+		selected_key_w = 62.0
+	elif keyboard_row == 4:
+		selected_key_w = 58.0
+	var selected_row_w = float(selected_row.size()) * selected_key_w + float(selected_row.size() - 1) * gap
+	var selected_x = rect.position.x + (rect.size.x - selected_row_w) * 0.5 + keyboard_col * (selected_key_w + gap)
+	var selected_y = rect.position.y + 82 + keyboard_row * (key_h + gap)
+	var selected_rect = Rect2(selected_x, selected_y, selected_key_w, key_h)
+	draw_rect(selected_rect, C_ACCENT, false, 2.0)
+	draw_rect(Rect2(selected_rect.position.x, selected_rect.position.y, 5, selected_rect.size.y), C_ACCENT, true)
 
 
 func _draw_action_rail(rect: Rect2, items: Array, selected_index: int) -> void:
@@ -867,6 +1039,37 @@ func _texts(keys: Array) -> Array[String]:
 	for key in keys:
 		values.append(_t(str(key)))
 	return values
+
+
+func _can_action_labels() -> Array[String]:
+	return [_t("can_filter"), _t("can_reset"), _t("can_run") if can_paused else _t("can_pause")]
+
+
+func _filtered_can_rows() -> Array[Dictionary]:
+	if can_filter.strip_edges() == "":
+		return can_rows
+	var needle = can_filter.to_lower()
+	var rows: Array[Dictionary] = []
+	for row in can_rows:
+		var line = str(row.get("line", "")).to_lower()
+		var raw = str(row.get("raw", "")).to_lower()
+		if line.contains(needle) or raw.contains(needle):
+			rows.append(row)
+	return rows
+
+
+func _keyboard_key_value(row_index: int, col_index: int) -> String:
+	var key = str(KEYBOARD_ROWS[row_index][col_index])
+	if key.length() == 1 and "ABCDEFGHIJKLMNOPQRSTUVWXYZ".contains(key) and keyboard_lowercase:
+		return key.to_lower()
+	return key
+
+
+func _keyboard_key_label(row_index: int, col_index: int) -> String:
+	var key = _keyboard_key_value(row_index, col_index)
+	if key == "SHIFT":
+		return "abc" if not keyboard_lowercase else "ABC"
+	return key
 
 
 func _set_status(message: String, kind: String = "info") -> void:
