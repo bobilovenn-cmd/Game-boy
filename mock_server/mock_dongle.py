@@ -2,7 +2,7 @@
 """
 Mock ESP32 CAN Dongle Server
 Simulates motor telemetry and responds to SDO/control commands over UDP.
-Includes a web dashboard to view and adjust fake motor data.
+Includes a web dashboard with real-time auto-refreshing motor data.
 """
 import json
 import socket
@@ -10,30 +10,29 @@ import threading
 import time
 import random
 import math
-import struct
 from flask import Flask, render_template_string, jsonify, request
 
 # ---------- Config ----------
 UDP_PORT = 5000
 WEB_PORT = 8080
-HEARTBEAT_INTERVAL = 0.15  # 150ms
-MOTOR_STATUS_INTERVAL = 0.1  # 100ms
+HEARTBEAT_INTERVAL = 0.15
+MOTOR_STATUS_INTERVAL = 0.1
 
 # ---------- Fake Motor State ----------
 motor = {
-    "current": 0.0,      # Amps
-    "voltage": 24.0,      # Volts
-    "speed": 0,           # RPM
-    "position": 0.0,      # Degrees
-    "torque": 0.0,        # Nm
-    "status_word": 0x0027,  # CiA 402: Enabled
+    "current": 0.0,
+    "voltage": 24.0,
+    "speed": 0,
+    "position": 0.0,
+    "torque": 0.0,
+    "status_word": 0x0027,
     "fault_code": 0,
-    "mode": 8,            # CSP mode
+    "mode": 8,
     "alive": True,
     "wdg_ms": 0,
 }
 motor_enabled = True
-motor_direction = 0  # 1 = CW, -1 = CCW, 0 = stopped
+motor_direction = 0
 motor_target_speed = 500
 motor_mode = 8
 pid_kp, pid_ki, pid_kd = 100, 10, 1
@@ -42,7 +41,6 @@ current_limit = 10.0
 # ---------- Command Log ----------
 cmd_log = []
 MAX_LOG = 200
-seq_counter = 0
 
 # ---------- HTML Template ----------
 HTML = """
@@ -90,85 +88,102 @@ HTML = """
 </head>
 <body>
 <h1>Mock ESP32 CAN Dongle</h1>
-<p class="sub">UDP :{{udp_port}} | Web :{{web_port}} | Motor {{'ENABLED' if enabled else 'DISABLED'}} | Mode: {{mode}}</p>
+<p class="sub" id="status_bar">UDP :{{udp_port}} | Web :{{web_port}} | Motor ENABLED | Mode: 8</p>
 
 <div class="grid">
   <div class="card">
     <div class="label">Current</div>
-    <div class="value cyan">{{ "%.2f"|format(data.current) }} <span class="unit">A</span></div>
+    <div class="value cyan" id="val_current">0.00 <span class="unit">A</span></div>
   </div>
   <div class="card">
     <div class="label">Voltage</div>
-    <div class="value blue">{{ "%.1f"|format(data.voltage) }} <span class="unit">V</span></div>
+    <div class="value blue" id="val_voltage">24.0 <span class="unit">V</span></div>
   </div>
   <div class="card">
     <div class="label">Speed</div>
-    <div class="value yellow">{{ data.speed }} <span class="unit">rpm</span></div>
+    <div class="value yellow" id="val_speed">0 <span class="unit">rpm</span></div>
   </div>
   <div class="card">
     <div class="label">Position</div>
-    <div class="value">{{ "%.1f"|format(data.position) }} <span class="unit">°</span></div>
+    <div class="value" id="val_position">0.0 <span class="unit">°</span></div>
   </div>
   <div class="card">
     <div class="label">Torque</div>
-    <div class="value green">{{ "%.2f"|format(data.torque) }} <span class="unit">Nm</span></div>
+    <div class="value green" id="val_torque">0.00 <span class="unit">Nm</span></div>
   </div>
   <div class="card">
     <div class="label">Status Word</div>
-    <div class="value {{ 'green' if data.status_word == 0x0027 else 'red' }}">0x{{ "%04X"|format(data.status_word) }}</div>
+    <div class="value green" id="val_status">0x0027</div>
   </div>
 </div>
 
 <div class="controls">
   <div class="control-group">
     <h3>Motor Control</h3>
-    <button class="btn btn-enable" onclick="send('enable')">Enable</button>
-    <button class="btn btn-disable" onclick="send('disable')">Disable</button>
-    <button class="btn btn-estop" onclick="send('estop')">E-STOP</button>
-    <button class="btn btn-cw" onclick="send('jog_cw')">Jog CW</button>
-    <button class="btn btn-ccw" onclick="send('jog_ccw')">Jog CCW</button>
-    <button class="btn btn-stop" onclick="send('jog_stop')">Jog Stop</button>
+    <button class="btn btn-enable" onclick="sendCmd('enable')">Enable</button>
+    <button class="btn btn-disable" onclick="sendCmd('disable')">Disable</button>
+    <button class="btn btn-estop" onclick="sendCmd('estop')">E-STOP</button>
+    <button class="btn btn-cw" onclick="sendCmd('jog_cw')">Jog CW</button>
+    <button class="btn btn-ccw" onclick="sendCmd('jog_ccw')">Jog CCW</button>
+    <button class="btn btn-stop" onclick="sendCmd('jog_stop')">Jog Stop</button>
   </div>
   <div class="control-group">
     <h3>Parameters</h3>
     <div class="slider-group">
-      <label>Target Speed: <span id="speed_val">{{target_speed}}</span> rpm</label>
-      <input type="range" min="0" max="3000" value="{{target_speed}}" oninput="setParam('target_speed', this.value)">
+      <label>Target Speed: <span id="speed_val">500</span> rpm</label>
+      <input type="range" min="0" max="3000" value="500" oninput="setParam('target_speed', this.value)">
     </div>
     <div class="slider-group">
-      <label>Voltage: <span id="voltage_val">{{ "%.1f"|format(data.voltage) }}</span> V</label>
-      <input type="range" min="0" max="48" value="{{data.voltage}}" step="0.1" oninput="setParam('voltage', this.value)">
+      <label>Voltage: <span id="voltage_val">24.0</span> V</label>
+      <input type="range" min="0" max="48" value="24.0" step="0.1" oninput="setParam('voltage', this.value)">
     </div>
     <div class="slider-group">
-      <label>Current Limit: <span id="cl_val">{{ "%.1f"|format(current_limit) }}</span> A</label>
-      <input type="range" min="0" max="20" value="{{current_limit}}" step="0.1" oninput="setParam('current_limit', this.value)">
+      <label>Current Limit: <span id="cl_val">10.0</span> A</label>
+      <input type="range" min="0" max="20" value="10.0" step="0.1" oninput="setParam('current_limit', this.value)">
     </div>
     <div class="slider-group">
-      <label>Simulated Load (adds noise): <span id="load_val">{{load}}</span>%</label>
-      <input type="range" min="0" max="100" value="{{load}}" oninput="setParam('load', this.value)">
+      <label>Simulated Load: <span id="load_val">30</span>%</label>
+      <input type="range" min="0" max="100" value="30" oninput="setParam('load', this.value)">
     </div>
   </div>
 </div>
 
-<div class="log" id="log">
-
-{% for entry in log[::-1][:50] %}
-  <div class="entry {{entry.type}}">[{{entry.ts}}] {{entry.msg}}</div>
-{% endfor %}
-</div>
+<div class="log" id="log_container"></div>
 
 <script>
-function send(cmd) { fetch('/api/cmd/' + cmd).then(r => r.json()).then(updateAll); }
-function setParam(k, v) { fetch('/api/set?k=' + k + '&v=' + v).then(updateAll); }
-function updateAll() { fetch('/api/state').then(r => r.json()).then(s => {
-  location.reload();
-}); }
-setInterval(() => { fetch('/api/state').then(r => r.json()).then(s => {
-  document.querySelectorAll('.value').forEach((el, i) => {
-    // Simple refresh - full reload every 2s
+function sendCmd(cmd) {
+  fetch('/api/cmd/' + cmd).then(r => r.json()).then(() => refresh());
+}
+function setParam(k, v) {
+  fetch('/api/set?k=' + k + '&v=' + v).then(() => {
+    document.getElementById(k + '_val').textContent = v;
   });
-}); }, 2000);
-// Auto-refresh removed - use manual controls
+}
+function refresh() {
+  fetch('/api/state').then(r => r.json()).then(s => {
+    var m = s.motor;
+    document.getElementById('val_current').innerHTML = m.current.toFixed(2) + ' <span class="unit">A</span>';
+    document.getElementById('val_voltage').innerHTML = m.voltage.toFixed(1) + ' <span class="unit">V</span>';
+    document.getElementById('val_speed').innerHTML = m.speed + ' <span class="unit">rpm</span>';
+    document.getElementById('val_position').innerHTML = m.position.toFixed(1) + ' <span class="unit">&deg;</span>';
+    document.getElementById('val_torque').innerHTML = m.torque.toFixed(2) + ' <span class="unit">Nm</span>';
+    var swEl = document.getElementById('val_status');
+    swEl.innerHTML = '0x' + m.status_word.toString(16).toUpperCase().padStart(4, '0');
+    swEl.className = 'value ' + (m.status_word === 0x27 ? 'green' : 'red');
+
+    document.getElementById('status_bar').textContent =
+      'UDP :5000 | Web :8080 | Motor ' + (s.enabled ? 'ENABLED' : 'DISABLED') + ' | Mode: ' + s.mode;
+
+    var logHtml = '';
+    var entries = s.log.slice(-50).reverse();
+    for (var i = 0; i < entries.length; i++) {
+      logHtml += '<div class="entry ' + entries[i].type + '">[' + entries[i].ts + '] ' + entries[i].msg + '</div>';
+    }
+    document.getElementById('log_container').innerHTML = logHtml;
+  });
+}
+setInterval(refresh, 500);
+refresh();
 </script>
 </body>
 </html>
@@ -180,17 +195,13 @@ app = Flask(__name__)
 @app.route('/')
 def index():
     return render_template_string(HTML,
-        udp_port=UDP_PORT, web_port=WEB_PORT,
-        enabled=motor_enabled, mode=motor_mode,
-        data=motor, target_speed=motor_target_speed,
-        current_limit=current_limit, load=load_pct,
-        log=cmd_log)
+        udp_port=UDP_PORT, web_port=WEB_PORT)
 
 @app.route('/api/state')
 def api_state():
     return jsonify(motor=motor, enabled=motor_enabled,
                    mode=motor_mode, target_speed=motor_target_speed,
-                   current_limit=current_limit, log=cmd_log[-30:])
+                   current_limit=current_limit, log=cmd_log[-50:])
 
 @app.route('/api/cmd/<cmd>')
 def api_cmd(cmd):
@@ -214,21 +225,22 @@ sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 sock.bind(('0.0.0.0', UDP_PORT))
 sock.settimeout(0.01)
 
-clients = {}  # addr -> last_seen_timestamp
+clients = {}
 load_pct = 30
 
 def handle_mock_command(cmd):
-    global motor_enabled, motor_direction, motor, motor_target_speed
+    global motor_enabled, motor_direction, motor_target_speed
     if cmd == 'enable':
         motor_enabled = True
         motor['status_word'] = 0x0027
-        add_log('cmd', f'Motor ENABLED')
+        motor['fault_code'] = 0
+        add_log('cmd', 'Motor ENABLED')
     elif cmd == 'disable':
         motor_enabled = False
         motor_direction = 0
         motor['status_word'] = 0x0021
         motor['speed'] = 0
-        add_log('cmd', f'Motor DISABLED')
+        add_log('cmd', 'Motor DISABLED')
     elif cmd == 'estop':
         motor_enabled = False
         motor_direction = 0
@@ -236,19 +248,19 @@ def handle_mock_command(cmd):
         motor['fault_code'] = 1
         motor['speed'] = 0
         motor['current'] = 0
-        add_log('error', f'E-STOP activated')
+        add_log('error', 'E-STOP activated')
     elif cmd == 'jog_cw':
         if motor_enabled:
             motor_direction = 1
-            add_log('cmd', f'Jog CW @ {motor_target_speed}rpm')
+            add_log('cmd', 'Jog CW @ {}rpm'.format(motor_target_speed))
     elif cmd == 'jog_ccw':
         if motor_enabled:
             motor_direction = -1
-            add_log('cmd', f'Jog CCW @ {motor_target_speed}rpm')
+            add_log('cmd', 'Jog CCW @ {}rpm'.format(motor_target_speed))
     elif cmd == 'jog_stop':
         motor_direction = 0
         motor['speed'] = 0
-        add_log('cmd', f'Jog STOPPED')
+        add_log('cmd', 'Jog STOPPED')
 
 def add_log(typ, msg):
     cmd_log.append({'ts': time.strftime('%H:%M:%S'), 'type': typ, 'msg': msg})
@@ -256,10 +268,7 @@ def add_log(typ, msg):
         cmd_log.pop(0)
 
 def update_motor(dt):
-    """Simulate motor physics"""
-    global motor
     speed = motor['speed']
-
     if motor_enabled and motor_direction != 0:
         target = motor_target_speed * motor_direction
         speed += (target - speed) * 0.1 * dt * 10
@@ -270,7 +279,6 @@ def update_motor(dt):
         motor['torque'] = motor['current'] * 0.05 + random.gauss(0, 0.01)
         motor['position'] = (motor['position'] + speed * dt / 60.0 * 360.0) % 360.0
     else:
-        # Idle: small brownian fluctuations so all values visibly move
         motor['speed'] = int(random.gauss(0, 8))
         motor['current'] = abs(random.gauss(0.25, 0.12))
         motor['torque'] = abs(random.gauss(0.03, 0.02))
@@ -281,8 +289,7 @@ def update_motor(dt):
     motor['wdg_ms'] = int((time.time() * 1000) % 500)
 
 def handle_udp_message(data_str, addr):
-    global clients
-    clients[addr] = time.time()  # track this client
+    clients[addr] = time.time()
     try:
         msg = json.loads(data_str)
     except:
@@ -318,7 +325,7 @@ def handle_udp_message(data_str, addr):
         motor_target_speed = payload.get('speed', 500)
         handle_mock_command('jog_cw' if direction == 'cw' else 'jog_ccw')
         resp = {'cmd': 'ack', 'seq': msg.get('seq', 0), 'ts': int(time.time()),
-                'payload': {'status': 'ok', 'msg': f'jog {direction}', 'node': node}}
+                'payload': {'status': 'ok', 'msg': 'jog {}'.format(direction), 'node': node}}
         sock.sendto(json.dumps(resp).encode(), addr)
     elif cmd == 'jog_stop':
         handle_mock_command('jog_stop')
@@ -328,22 +335,21 @@ def handle_udp_message(data_str, addr):
     elif cmd == 'sdo_read':
         index = payload.get('index', 0)
         sub = payload.get('sub', 0)
-        # Return fake SDO values
         sdo_values = {
-            0x6060: motor_mode,       # Mode
-            0x6040: 0x000F if motor_enabled else 0x0006,  # Control word
-            0x60FF: motor_target_speed,  # Target speed
-            0x6071: int(motor['torque'] * 1000),  # Target torque (permille)
-            0x2010: pid_kp,           # PID Kp
-            0x2011: pid_ki,           # PID Ki
-            0x2012: pid_kd,           # PID Kd
-            0x2013: int(current_limit * 1000),  # Current limit (mA)
+            0x6060: motor_mode,
+            0x6040: 0x000F if motor_enabled else 0x0006,
+            0x60FF: motor_target_speed,
+            0x6071: int(motor['torque'] * 1000),
+            0x2010: pid_kp,
+            0x2011: pid_ki,
+            0x2012: pid_kd,
+            0x2013: int(current_limit * 1000),
         }
         val = sdo_values.get(index, 0)
         resp = {'cmd': 'sdo_read_result', 'seq': msg.get('seq', 0), 'ts': int(time.time()),
-                'payload': {'index': index, 'sub': sub, 'data': f'{val:X}', 'node': node}}
+                'payload': {'index': index, 'sub': sub, 'data': '{:X}'.format(val), 'node': node}}
         sock.sendto(json.dumps(resp).encode(), addr)
-        add_log('resp', f'SDO Read 0x{index:04X}:{sub} = 0x{val:X}')
+        add_log('resp', 'SDO Read 0x{:04X}:{} = 0x{:X}'.format(index, sub, val))
     elif cmd == 'sdo_write':
         index = payload.get('index', 0)
         data = payload.get('data', 0)
@@ -358,16 +364,16 @@ def handle_udp_message(data_str, addr):
         elif index == 0x2013:
             current_limit = float(data) / 1000.0
         resp = {'cmd': 'ack', 'seq': msg.get('seq', 0), 'ts': int(time.time()),
-                'payload': {'status': 'ok', 'msg': f'sdo write 0x{index:04X}', 'node': node}}
+                'payload': {'status': 'ok', 'msg': 'sdo write 0x{:04X}'.format(index), 'node': node}}
         sock.sendto(json.dumps(resp).encode(), addr)
-        add_log('cmd', f'SDO Write 0x{index:04X} = {data}')
+        add_log('cmd', 'SDO Write 0x{:04X} = {}'.format(index, data))
     elif cmd == 'ota_start':
-        add_log('cmd', f'OTA start: size={payload.get("size",0)}, md5={payload.get("md5","")[:16]}')
+        add_log('cmd', 'OTA start: size={}, md5={}'.format(payload.get('size', 0), payload.get('md5', '')[:16]))
         resp = {'cmd': 'ota_status', 'seq': msg.get('seq', 0), 'ts': int(time.time()),
                 'payload': {'state': 'ready', 'msg': 'ready for OTA'}}
         sock.sendto(json.dumps(resp).encode(), addr)
     elif cmd == 'ota_chunk':
-        add_log('resp', f'OTA chunk offset={payload.get("offset",0)}')
+        add_log('resp', 'OTA chunk offset={}'.format(payload.get('offset', 0)))
     elif cmd == 'ota_verify':
         add_log('cmd', 'OTA verify requested')
         resp = {'cmd': 'ota_status', 'seq': msg.get('seq', 0), 'ts': int(time.time()),
@@ -380,9 +386,7 @@ def handle_udp_message(data_str, addr):
         sock.sendto(json.dumps(resp).encode(), addr)
 
 def udp_loop():
-    """Background thread: receive UDP and send motor_status"""
     last_status = 0
-    last_hb_send = 0
     while True:
         now = time.time()
         try:
@@ -391,51 +395,51 @@ def udp_loop():
         except socket.timeout:
             pass
 
-        # Clean up stale clients (no heartbeat for 2 seconds)
+        # Clean up stale clients
         stale = [a for a, t in clients.items() if now - t > 2.0]
         for a in stale:
             del clients[a]
 
-        # Send motor_status periodically to ALL active clients
-        if clients and now - last_status >= MOTOR_STATUS_INTERVAL:
+        # Update motor simulation and broadcast to connected UDP clients
+        if now - last_status >= MOTOR_STATUS_INTERVAL:
             update_motor(MOTOR_STATUS_INTERVAL)
-            payload = {
-                'current': round(motor['current'], 2),
-                'voltage': round(motor['voltage'], 1),
-                'speed': motor['speed'],
-                'position': round(motor['position'], 1),
-                'torque': round(motor['torque'], 2),
-                'status_word': motor['status_word'],
-                'fault': motor['fault_code'],
-                'mode': motor_mode,
-                'alive': motor_enabled,
-                'wdg_ms': motor['wdg_ms'],
-            }
-            msg = {'cmd': 'motor_status', 'seq': 0, 'ts': int(now),
-                   'payload': payload}
-            for addr in list(clients.keys()):
-                try:
-                    sock.sendto(json.dumps(msg).encode(), addr)
-                except:
-                    pass
             last_status = now
+
+            if clients:
+                payload = {
+                    'current': round(motor['current'], 2),
+                    'voltage': round(motor['voltage'], 1),
+                    'speed': motor['speed'],
+                    'position': round(motor['position'], 1),
+                    'torque': round(motor['torque'], 2),
+                    'status_word': motor['status_word'],
+                    'fault': motor['fault_code'],
+                    'mode': motor_mode,
+                    'alive': motor_enabled,
+                    'wdg_ms': motor['wdg_ms'],
+                }
+                msg = {'cmd': 'motor_status', 'seq': 0, 'ts': int(now),
+                       'payload': payload}
+                for addr in list(clients.keys()):
+                    try:
+                        sock.sendto(json.dumps(msg).encode(), addr)
+                    except:
+                        pass
 
         time.sleep(0.01)
 
 # ---------- Main ----------
 if __name__ == '__main__':
-    print(f"""
+    print("""
 ╔══════════════════════════════════════════════════╗
 ║       Mock ESP32 CAN Dongle Server               ║
 ╠══════════════════════════════════════════════════╣
-║  UDP Port (dongle):  {UDP_PORT}                         ║
-║  Web Dashboard:      http://localhost:{WEB_PORT}     ║
-║  Motor Status:       {int(1/MOTOR_STATUS_INTERVAL)} Hz                          ║
-║  Heartbeat:          {int(1/HEARTBEAT_INTERVAL)} Hz                         ║
+║  UDP Port (dongle):  {}                         ║
+║  Web Dashboard:      http://localhost:{}     ║
+║  Motor Status:       {} Hz                          ║
+║  Heartbeat:          {} Hz                         ║
 ╚══════════════════════════════════════════════════╝
-""")
-    # Start UDP thread
+""".format(UDP_PORT, WEB_PORT, int(1/MOTOR_STATUS_INTERVAL), int(1/HEARTBEAT_INTERVAL)))
     udp_thread = threading.Thread(target=udp_loop, daemon=True)
     udp_thread.start()
-    # Start web dashboard
     app.run(host='0.0.0.0', port=WEB_PORT, debug=False)

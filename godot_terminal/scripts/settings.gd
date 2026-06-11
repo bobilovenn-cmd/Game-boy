@@ -5,7 +5,7 @@
 extends RefCounted
 class_name AppSettings
 
-const DONGLE_IP = "192.168.4.1"
+const DONGLE_IP = "192.168.31.128"
 const DONGLE_UDP_PORT = 5000
 const LOCAL_UDP_PORT = 5001
 const HEARTBEAT_INTERVAL_MS = 150
