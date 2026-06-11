@@ -1,9 +1,11 @@
 ---
 name: godot-rgb30-test
-description: Godot 4.6.3 ARM64 export test results on PowKiddy RGB30 / ROCKNIX
-metadata:
+description: Godot 4.6.3 ARM64 export test results on PowKiddy RGB30 / ROCKNIX + Mock Server 集成验证
+metadata: 
+  node_type: memory
   type: project
-  date: 2026-06-09
+  date: 2026-06-11
+  originSessionId: f49ec00f-e03c-4fe6-8908-14dc696d670d
 ---
 
 Godot 4.6.3 ARM64 export was built and copied to RGB30:
@@ -18,44 +20,40 @@ The binary runs on RGB30 and `--version` succeeds:
 4.6.3.stable.official.7d41c59c4
 ```
 
-SHA256 matched between Mac and RGB30:
+## 2026-06-11 Mock Server 集成验证
 
-```text
-7618bea1ac7c511c4908228f34d2beb0987d3e25c2c57071e63d22d456b220a7
+### Mock Server 连接成功
+- Mock server 运行在 Mac (192.168.31.128:5000 UDP, :8080 Web)
+- DONGLE_IP 改为 192.168.31.128 后 Godot 终端成功连接
+- LINK 指示灯变绿 = motor_status 数据包正常接收
+- UDP 指示灯变绿 = 本机 5001 端口绑定成功
+
+### 修复的关键 Bug
+1. **motor_status 从未发送**: udp_loop 中 update_motor() 更新 last_status 后，第二个 if 判断永远不触发 → 合并为一个代码块
+2. **DONGLE_IP 错误**: 原指向 ESP32 AP 192.168.4.1 → 开发调试改为 Mac IP 192.168.31.128
+3. **Web Dashboard 自动刷新**: JS setInterval 为空操作 → 改为 500ms fetch + DOM 更新
+
+### 数据流向
+```
+Godot :5001 ──heartbeat──> mock :5000
+Godot :5001 <──motor_status── mock :5000  (10Hz)
+浏览器 ──HTTP──> mock :8080 (Web Dashboard, 500ms 自动刷新)
 ```
 
-Display tests:
+### 启动流程
+```bash
+cd "/Users/guoweifeng/Game BOY/mock_server" && ./start_mock.sh
+```
+自动完成: mock server 启动 → RGB30 SSH 检查 → 部署 Godot 二进制 → 重启 sway → 启动 Godot
 
-- Initial Wayland + `gl_compatibility` test ran for 15 seconds but screen stayed black.
-- Vulkan Mobile test identified Mali-G52 and created a Wayland window, but logged:
-  `swap_chain_resize ERR_CANT_CREATE`.
-- Sway `DSI-1` output was initially inactive/power false after the Python SDL2 service had been using DRM/KMS.
-- Restarting `sway.service` after stopping `diag-terminal.service` made `DSI-1` active/power true.
-- Even with active `DSI-1`, Godot 4 Vulkan Mobile still logged swapchain creation failures.
-- `gl_compatibility` on active `DSI-1` falls back from OpenGL to OpenGLES.
-- After stopping `diag-terminal.service`, restarting `sway.service`, and running
-  Godot with `gl_compatibility`, the user observed the Godot UI with the
-  waveform panel and "Waiting for motor_status packets..." text.
+### 显示测试结果
+- Wayland + gl_compatibility: ✅ 正常渲染
+- Vulkan Mobile: ❌ swapchain 创建失败 (Mali-G52 不支持)
+- RGB30 屏幕: ✅ UI 可见，遥测数据实时更新
+- 按键映射: ✅ /dev/input/js0 原始映射正常
+- 波形面板: ✅ motor_status 数据驱动曲线
 
-Conclusion:
-
-Godot 4.6.3 Linux ARM64 can execute and render on RGB30, but it requires the
-correct display handoff:
-
-1. Stop the Python SDL2/KMSDRM service.
-2. Restart `sway.service` so `DSI-1` becomes active/power true.
-3. Run the Godot export through Wayland with `gl_compatibility`.
-
-Vulkan Mobile is not currently reliable because swapchain creation fails.
-
-Recommended next steps:
-
-1. Keep Python/SDL2 KMSDRM implementation as the working production fallback.
-2. Continue Godot 4.6.3 testing using Wayland + `gl_compatibility`.
-3. Verify RGB30 input mapping in Godot.
-4. Verify UDP `motor_status` packets from ESP32 CAN Dongle.
-5. Avoid replacing the SDL2 service until the Godot build accepts RGB30 input,
-   receives UDP data, and survives repeated service restarts.
+## 历史记录
 
 2026-06-09 RGB30 UI readability pass:
 
@@ -70,8 +68,6 @@ Recommended next steps:
   cyan border/left bar, and white text instead of cyan fill with black text.
 - The fixed export was rebuilt and deployed to:
   `/storage/handheld_terminal_godot/rgb30_diag_terminal_arm64`
-- The new RGB30 process started successfully as PID 34589. Logs only showed the
-  known Wayland/OpenGL fallback warnings, with no immediate crash.
 
 2026-06-09 second RGB30 readability pass:
 

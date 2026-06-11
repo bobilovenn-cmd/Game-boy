@@ -53,6 +53,13 @@ const CONFIG_ITEMS = [
 ]
 const OTA_ITEM_KEYS = ["ota_load", "ota_send", "ota_verify", "ota_flash"]  # OTA升级步骤
 const CAN_ITEM_KEYS = ["can_filter", "can_reset", "can_pause"]  # CAN日志页操作
+const NODE_KEY_ROWS = [
+	["1", "2", "3"],
+	["4", "5", "6"],
+	["7", "8", "9"],
+	["BACK", "0", "DEL"],
+	["OK"],
+]
 const KEYBOARD_ROWS = [
 	["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"],
 	["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
@@ -108,6 +115,13 @@ var language_selected = false               # 是否已选择语言
 var selected_language = 0                   # 当前选中的语言索引
 var ui_lang = UiText.LANG_ZH               # 当前界面语言
 
+## 节点选择状态
+var node_selected = false                   # 是否已选择电机节点
+var selected_node_id = AppSettings.DEFAULT_NODE_ID  # 当前控制节点
+var node_input = ""                         # 节点输入框内容
+var node_key_row = 0                        # 节点数字键盘选中行
+var node_key_col = 0                        # 节点数字键盘选中列
+
 ## 页面导航状态
 var current_tab = 0                         # 当前页面(0=监控, 1=配置, 2=OTA, 3=CAN日志)
 var selected = [0, 0, 0, 0]                 # 各页面当前选中项索引
@@ -141,6 +155,8 @@ var last_ota_send_msec = 0                  # 上次发送数据块时间
 var can_filter = ""                         # CAN日志过滤字段
 var can_rows: Array[Dictionary] = []         # CAN/UDP接收日志
 var can_paused = false                      # 暂停刷新
+var can_rx_count = 0                         # CAN/UDP日志接收计数
+var can_last_line = ""                       # 最后一条CAN/UDP日志摘要
 var keyboard_open = false                   # 是否显示虚拟键盘
 var keyboard_row = 0                        # 虚拟键盘选中行
 var keyboard_col = 0                        # 虚拟键盘选中列
@@ -199,6 +215,9 @@ func _process(_delta: float) -> void:
 	if not language_selected:
 		queue_redraw()
 		return
+	if not node_selected:
+		queue_redraw()
+		return
 
 	# 轮询UDP接收电机数据
 	_poll_udp()
@@ -231,6 +250,11 @@ func _draw() -> void:
 	_draw_background()           # 绘制网格背景
 	if not language_selected:
 		_draw_language_select()  # 语言选择界面
+		_draw_status_overlay()
+		return
+	if not node_selected:
+		_draw_node_select()      # 节点选择界面
+		_draw_status_overlay()
 		return
 
 	_draw_header()               # 顶部标题栏(LINK/UDP状态指示)
@@ -381,6 +405,9 @@ func _handle_action(action: String) -> void:
 	if not language_selected:
 		_handle_language_action(action)
 		return
+	if not node_selected:
+		_handle_node_action(action)
+		return
 	if keyboard_open:
 		_handle_keyboard_action(action)
 		return
@@ -409,19 +436,19 @@ func _handle_action(action: String) -> void:
 		"confirm":
 			_confirm_current_selection()
 		"back":
-			_send(Protocol.jog_stop(AppSettings.DEFAULT_NODE_ID), "Jog stopped")
+			_send(Protocol.jog_stop(selected_node_id), "Jog stopped")
 		"enable":
-			_send(Protocol.enable(AppSettings.DEFAULT_NODE_ID), "Enable sent")
+			_send(Protocol.enable(selected_node_id), "Enable sent")
 		"disable":
-			_send(Protocol.disable(AppSettings.DEFAULT_NODE_ID), "Disable sent")
+			_send(Protocol.disable(selected_node_id), "Disable sent")
 		"estop":
 			_send(Protocol.estop(), "E-STOP sent", "error")
 		"jog_cw":
-			_send(Protocol.jog_start(AppSettings.DEFAULT_NODE_ID, "cw", 500), "Jog CW")
+			_send(Protocol.jog_start(selected_node_id, "cw", 500), "Jog CW")
 		"jog_ccw":
-			_send(Protocol.jog_start(AppSettings.DEFAULT_NODE_ID, "ccw", 500), "Jog CCW")
+			_send(Protocol.jog_start(selected_node_id, "ccw", 500), "Jog CCW")
 		"jog_stop":
-			_send(Protocol.jog_stop(AppSettings.DEFAULT_NODE_ID), "Jog stopped")
+			_send(Protocol.jog_stop(selected_node_id), "Jog stopped")
 		"r2":
 			_set_status("R2 reserved")
 		"stick_press":
@@ -445,14 +472,71 @@ func _handle_language_action(action: String) -> void:
 				OS.execute("poweroff", [])
 			else:
 				language_selected = true
+				node_selected = false
+				node_input = ""
+				node_key_row = 0
+				node_key_col = 0
 				ui_lang = LANGUAGE_OPTIONS[selected_language]
 				_set_status("LANGUAGE %s" % ui_lang.to_upper())
+
+
+func _handle_node_action(action: String) -> void:
+	match action:
+		"up":
+			node_key_row = max(0, node_key_row - 1)
+			node_key_col = min(node_key_col, NODE_KEY_ROWS[node_key_row].size() - 1)
+		"down":
+			node_key_row = min(NODE_KEY_ROWS.size() - 1, node_key_row + 1)
+			node_key_col = min(node_key_col, NODE_KEY_ROWS[node_key_row].size() - 1)
+		"left":
+			node_key_col = max(0, node_key_col - 1)
+		"right":
+			node_key_col = min(NODE_KEY_ROWS[node_key_row].size() - 1, node_key_col + 1)
+		"confirm":
+			_apply_node_key(str(NODE_KEY_ROWS[node_key_row][node_key_col]))
+		"back", "language_select":
+			_return_to_language_select()
+
+
+func _apply_node_key(key: String) -> void:
+	match key:
+		"BACK":
+			_return_to_language_select()
+		"DEL":
+			if node_input.length() > 0:
+				node_input = node_input.substr(0, node_input.length() - 1)
+		"OK":
+			_confirm_node_input()
+		_:
+			if node_input.length() < 3:
+				node_input += key
+
+
+func _confirm_node_input() -> void:
+	if node_input == "" or not node_input.is_valid_int():
+		_set_status(_t("node_error_empty"), "warn")
+		return
+	var value = int(node_input)
+	if value < 1 or value > 127:
+		_set_status(_t("node_error_range"), "error")
+		return
+	selected_node_id = value
+	node_selected = true
+	current_tab = 0
+	selected = [0, 0, 0, 0]
+	motor = MotorDataScript.new()
+	last_rx_msec = 0
+	result_msg = ""
+	can_rows.clear()
+	_set_status(_t("node_selected_status") % selected_node_id)
 
 
 func _return_to_language_select() -> void:
 	var idx = LANGUAGE_OPTIONS.find(ui_lang)
 	selected_language = idx if idx >= 0 else 0
 	language_selected = false
+	node_selected = false
+	node_input = ""
 	status_msg = ""
 	status_until_msec = 0
 
@@ -461,25 +545,25 @@ func _confirm_current_selection() -> void:
 	if current_tab == 0:
 		match int(selected[0]):
 			0:
-				_send(Protocol.enable(AppSettings.DEFAULT_NODE_ID), "Enable sent")
+				_send(Protocol.enable(selected_node_id), "Enable sent")
 			1:
-				_send(Protocol.disable(AppSettings.DEFAULT_NODE_ID), "Disable sent")
+				_send(Protocol.disable(selected_node_id), "Disable sent")
 			2:
 				_send(Protocol.estop(), "E-STOP sent", "error")
 			3:
-				_send(Protocol.jog_start(AppSettings.DEFAULT_NODE_ID, "cw", 500), "Jog CW")
+				_send(Protocol.jog_start(selected_node_id, "cw", 500), "Jog CW")
 			4:
-				_send(Protocol.jog_start(AppSettings.DEFAULT_NODE_ID, "ccw", 500), "Jog CCW")
+				_send(Protocol.jog_start(selected_node_id, "ccw", 500), "Jog CCW")
 	elif current_tab == 1:
 		var item: Array = CONFIG_ITEMS[int(selected[1])]
 		var name_key: String = item[0]
 		var index: int = item[1]
 		var sub: int = item[2]
 		if name_key == "cfg_save_eeprom":
-			_send(Protocol.sdo_write(AppSettings.DEFAULT_NODE_ID, index, sub, 0x65766173), "Save EEPROM")
+			_send(Protocol.sdo_write(selected_node_id, index, sub, 0x65766173), "Save EEPROM")
 		else:
 			result_msg = "Reading 0x%s..." % _hex(index)
-			_send(Protocol.sdo_read(AppSettings.DEFAULT_NODE_ID, index, sub), result_msg)
+			_send(Protocol.sdo_read(selected_node_id, index, sub), result_msg)
 	elif current_tab == 2:
 		match int(selected[2]):
 			0:
@@ -490,7 +574,7 @@ func _confirm_current_selection() -> void:
 				_send(Protocol.ota_verify(), "Verify requested")
 				_log_ota("Requesting MD5 verify")
 			3:
-				_send(Protocol.ota_flash(AppSettings.DEFAULT_NODE_ID), "Flash command sent")
+				_send(Protocol.ota_flash(selected_node_id), "Flash command sent")
 				_log_ota("Flash command sent")
 	elif current_tab == 3:
 		match int(selected[3]):
@@ -564,19 +648,54 @@ func _record_can_row(raw: String, data: Dictionary) -> void:
 	var payload = data
 	if data.has("payload") and typeof(data["payload"]) == TYPE_DICTIONARY:
 		payload = data["payload"]
-	var can_id = str(payload.get("can_id", payload.get("id", "")))
-	var dlc = str(payload.get("dlc", ""))
-	var bytes = str(payload.get("data", payload.get("bytes", "")))
-	var line = Time.get_time_string_from_system() + "  " + cmd
-	if can_id != "":
-		line += "  ID " + can_id
-	if dlc != "":
-		line += "  DLC " + dlc
-	if bytes != "":
-		line += "  " + bytes
+	if cmd == "ack" and str(payload.get("msg", "")) == "alive":
+		return
+	var line = "%s  %s  %s" % [Time.get_time_string_from_system(), _packet_node_label(payload), _packet_summary(cmd, payload, raw)]
+	can_rx_count += 1
+	can_last_line = line
 	can_rows.append({"line": line, "raw": raw})
 	while can_rows.size() > 80:
 		can_rows.pop_front()
+
+
+func _packet_node_label(payload: Dictionary) -> String:
+	var node = _message_node(payload)
+	if node > 0:
+		return "N%d" % node
+	return "ALL"
+
+
+func _packet_summary(cmd: String, payload: Dictionary, raw: String) -> String:
+	var can_id = str(payload.get("can_id", payload.get("id", "")))
+	var dlc = str(payload.get("dlc", ""))
+	var bytes = str(payload.get("data", payload.get("bytes", "")))
+	if can_id != "" or bytes != "":
+		var text = cmd
+		if can_id != "":
+			text += " ID " + can_id
+		if dlc != "":
+			text += " DLC " + dlc
+		if bytes != "":
+			text += " " + bytes
+		return text
+	match cmd:
+		"motor_status":
+			return "STATUS I=%sA V=%sV RPM=%s POS=%s T=%s" % [
+				str(payload.get("current", "--")),
+				str(payload.get("voltage", "--")),
+				str(payload.get("speed", "--")),
+				str(payload.get("position", "--")),
+				str(payload.get("torque", "--")),
+			]
+		"ack":
+			return "ack %s %s" % [str(payload.get("status", "")), str(payload.get("msg", ""))]
+		"sdo_read_result":
+			return "sdo_read 0x%s = %s" % [_hex(int(payload.get("index", 0))), str(payload.get("data", ""))]
+		"ota_status":
+			return "ota_status " + str(payload.get("state", ""))
+	if raw.length() > 64:
+		return cmd + " " + raw.substr(0, 64)
+	return cmd + " " + raw
 
 
 ## 消息分发处理 - 根据cmd字段路由到对应处理器
@@ -590,19 +709,37 @@ func _handle_message(data: Dictionary) -> void:
 
 	match cmd:
 		"motor_status":        # 电机状态上报(周期性)
+			if not _message_matches_selected_node(payload):
+				return
 			motor.update_from_dict(payload)
 			motor.alive = true
 		"sdo_read_result":     # SDO读取结果
+			if not _message_matches_selected_node(payload):
+				return
 			_handle_sdo_result(payload)
 		"ota_status":          # OTA升级状态
 			_handle_ota_status(payload)
 		"ack":                 # 通用应答
+			if not _message_matches_selected_node(payload):
+				return
 			var status = str(payload.get("status", ""))
 			var msg = str(payload.get("msg", ""))
 			var text = "OK: %s" % msg if status == "ok" else "ERR: %s" % msg
 			_set_status(text, "info" if status == "ok" else "error")
 			result_msg = text
 			_log_ota(text)
+
+
+func _message_matches_selected_node(data: Dictionary) -> bool:
+	var node = _message_node(data)
+	return node == 0 or node == selected_node_id
+
+
+func _message_node(data: Dictionary) -> int:
+	for key in ["node", "node_id", "nodeId"]:
+		if data.has(key):
+			return int(data.get(key, 0))
+	return 0
 
 
 func _handle_sdo_result(data: Dictionary) -> void:
@@ -739,6 +876,47 @@ func _draw_language_select() -> void:
 	_draw_text(_t("language_hint"), 78, 626, C_DIM, 14, HORIZONTAL_ALIGNMENT_CENTER, 564)
 
 
+func _draw_node_select() -> void:
+	_draw_panel(Rect2(78, 54, 564, 548), C_PANEL, C_LINE)
+	_draw_text(_t("node_title"), 108, 92, C_TEXT, 24)
+	_draw_text(_t("node_subtitle"), 108, 138, C_DIM, 14)
+	_draw_text(_t("node_range"), 108, 164, C_DIM_2, 12)
+
+	var input_rect = Rect2(180, 198, 360, 58)
+	draw_rect(input_rect, C_INPUT, true)
+	draw_rect(input_rect, C_LINE, false, 1.0)
+	var node_text = node_input if node_input != "" else "--"
+	_draw_text(node_text, input_rect.position.x, input_rect.position.y + 15, C_ACCENT if node_input != "" else C_DIM_2, 22, HORIZONTAL_ALIGNMENT_CENTER, input_rect.size.x)
+
+	var key_w = 106.0
+	var key_h = 42.0
+	var gap = 12.0
+	var y = 292.0
+	for row_index in NODE_KEY_ROWS.size():
+		var row: Array = NODE_KEY_ROWS[row_index]
+		var row_w = float(row.size()) * key_w + float(row.size() - 1) * gap
+		var x = 360.0 - row_w * 0.5
+		for col_index in row.size():
+			var r = Rect2(x + col_index * (key_w + gap), y, key_w, key_h)
+			draw_rect(r, C_INPUT, true)
+			draw_rect(r, C_LINE, false, 1.0)
+			_draw_text(str(row[col_index]), r.position.x, r.position.y + 11, C_TEXT, 14, HORIZONTAL_ALIGNMENT_CENTER, r.size.x)
+		y += key_h + gap
+
+	var selected_row: Array = NODE_KEY_ROWS[node_key_row]
+	var selected_row_w = float(selected_row.size()) * key_w + float(selected_row.size() - 1) * gap
+	var selected_x = 360.0 - selected_row_w * 0.5 + node_key_col * (key_w + gap)
+	var selected_y = 292.0 + node_key_row * (key_h + gap)
+	var selected_rect = Rect2(selected_x, selected_y, key_w, key_h)
+	var selected_key = str(NODE_KEY_ROWS[node_key_row][node_key_col])
+	var selected_color = C_WARN if selected_key == "BACK" else C_ACCENT
+	draw_rect(selected_rect, selected_color, false, 2.0)
+	draw_rect(Rect2(selected_rect.position.x, selected_rect.position.y, 5, selected_rect.size.y), selected_color, true)
+
+	_draw_panel(Rect2(78, 626, 564, 42), C_INPUT, C_LINE)
+	_draw_text(_t("node_hint"), 78, 637, C_DIM, 12, HORIZONTAL_ALIGNMENT_CENTER, 564)
+
+
 func _draw_header() -> void:
 	_draw_panel(Rect2(14, 12, 692, 64), C_PANEL, C_LINE)
 	_draw_text(_t("app_title"), 30, 28, C_TEXT, 20)
@@ -746,7 +924,7 @@ func _draw_header() -> void:
 	_draw_status_chip(Rect2(505, 23, 84, 24), "LINK", link)
 	_draw_status_chip(Rect2(598, 23, 84, 24), "UDP", udp_ready)
 	_draw_text("%d ms" % AppSettings.HEARTBEAT_INTERVAL_MS, 622, 56, C_DIM, 10)
-	_draw_text(_t("header_subtitle") % AppSettings.DEFAULT_NODE_ID, 32, 56, C_TEXT, 10)
+	_draw_text(_t("header_subtitle") % selected_node_id, 32, 56, C_TEXT, 10)
 
 
 func _draw_tabs() -> void:
@@ -815,8 +993,8 @@ func _draw_ota_page() -> void:
 
 
 func _draw_can_page() -> void:
-	_draw_panel(Rect2(18, 140, 684, 96), C_PANEL, C_LINE)
-	_draw_text(_t("can_header"), 36, 158, C_ACCENT, 12)
+	_draw_panel(Rect2(18, 140, 684, 108), C_PANEL, C_LINE)
+	_draw_text(_t("can_header"), 36, 158, C_ACCENT, 13)
 	_draw_text(_t("can_filter_label"), 36, 194, C_DIM, 13)
 	var input_rect = Rect2(112, 188, 474, 30)
 	draw_rect(input_rect, C_INPUT, true)
@@ -824,20 +1002,26 @@ func _draw_can_page() -> void:
 	_draw_text(can_filter if can_filter != "" else _t("can_all"), input_rect.position.x + 10, input_rect.position.y + 7, C_TEXT if can_filter != "" else C_DIM_2, 12)
 	if can_paused:
 		_draw_text(_t("can_paused"), 604, 194, C_WARN, 12)
+	_draw_text("RX %d" % can_rx_count, 596, 158, C_ACCENT, 13)
+	var last_line = can_last_line if can_last_line != "" else "WAIT UDP PACKETS"
+	_draw_text(last_line.substr(0, 64), 36, 224, C_TEXT, 12)
 
-	_draw_action_rail(Rect2(18, 254, 188, 226), _can_action_labels(), int(selected[3]))
-	_draw_panel(Rect2(224, 254, 478, 386), C_PANEL, C_LINE)
-	_draw_text(_t("can_log"), 242, 274, C_DIM, 13)
+	_draw_action_rail(Rect2(18, 268, 188, 226), _can_action_labels(), int(selected[3]))
+	_draw_panel(Rect2(224, 268, 478, 372), C_PANEL, C_LINE)
+	_draw_text(_t("can_log"), 242, 288, C_DIM, 14)
 	var rows = _filtered_can_rows()
 	if rows.is_empty():
-		_draw_text(_t("can_empty"), 242, 314, C_DIM, 13)
+		_draw_text(_t("can_empty"), 242, 332, C_TEXT, 15)
 		return
-	var start = max(0, rows.size() - 16)
-	var y = 310.0
+	var start = max(0, rows.size() - 9)
+	var y = 322.0
 	for i in range(start, rows.size()):
 		var row: Dictionary = rows[i]
-		_draw_text(str(row.get("line", "")), 242, y, C_TEXT, 10)
-		y += 20
+		var row_rect = Rect2(240, y - 2, 444, 28)
+		draw_rect(row_rect, C_INPUT, true)
+		draw_rect(row_rect, C_LINE, false, 1.0)
+		_draw_text(str(row.get("line", "")).substr(0, 72), 250, y + 5, C_TEXT, 11)
+		y += 34
 
 
 func _draw_virtual_keyboard() -> void:
