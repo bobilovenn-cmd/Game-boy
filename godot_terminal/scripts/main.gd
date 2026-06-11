@@ -51,7 +51,7 @@ const CONFIG_ITEMS = [
 	["cfg_current_limit", 0x2013, 0, "cfg_amps"],         # 电流限制
 	["cfg_save_eeprom", 0x1010, 1, "cfg_persist"],        # 保存到EEPROM
 ]
-const OTA_ITEM_KEYS = ["ota_load", "ota_send", "ota_verify", "ota_flash"]  # OTA升级步骤
+const OTA_ITEM_KEYS = ["ota_upload", "ota_load", "ota_send", "ota_verify", "ota_flash"]  # OTA升级步骤
 const CAN_ITEM_KEYS = ["can_filter", "can_reset", "can_pause"]  # CAN日志页操作
 const NODE_KEY_ROWS = [
 	["1", "2", "3"],
@@ -150,6 +150,8 @@ var ota_offset = 0                          # 当前传输偏移量
 var ota_started = false                     # 是否已发送ota_start命令
 var ota_start_msec = 0                      # 传输开始时间
 var last_ota_send_msec = 0                  # 上次发送数据块时间
+var upload_mode_open = false                # 是否打开固件上传模式界面
+var upload_mode_state = "dongle"            # dongle/upload
 
 ## CAN日志页面状态
 var can_filter = ""                         # CAN日志过滤字段
@@ -254,6 +256,10 @@ func _draw() -> void:
 		return
 	if not node_selected:
 		_draw_node_select()      # 节点选择界面
+		_draw_status_overlay()
+		return
+	if upload_mode_open:
+		_draw_upload_mode_page() # 固件上传模式独立页面
 		_draw_status_overlay()
 		return
 
@@ -407,6 +413,9 @@ func _handle_action(action: String) -> void:
 		return
 	if not node_selected:
 		_handle_node_action(action)
+		return
+	if upload_mode_open:
+		_handle_upload_mode_action(action)
 		return
 	if keyboard_open:
 		_handle_keyboard_action(action)
@@ -567,13 +576,15 @@ func _confirm_current_selection() -> void:
 	elif current_tab == 2:
 		match int(selected[2]):
 			0:
-				_load_default_firmware()
+				_open_upload_mode()
 			1:
-				_start_ota_transfer()
+				_load_default_firmware()
 			2:
+				_start_ota_transfer()
+			3:
 				_send(Protocol.ota_verify(), "Verify requested")
 				_log_ota("Requesting MD5 verify")
-			3:
+			4:
 				_send(Protocol.ota_flash(selected_node_id), "Flash command sent")
 				_log_ota("Flash command sent")
 	elif current_tab == 3:
@@ -588,6 +599,24 @@ func _confirm_current_selection() -> void:
 			2:
 				can_paused = not can_paused
 				_set_status(_t("can_paused") if can_paused else _t("can_run_status"))
+
+
+func _open_upload_mode() -> void:
+	upload_mode_open = true
+	upload_mode_state = "upload"
+	_set_status(_t("upload_mode_status"))
+
+
+func _close_upload_mode() -> void:
+	upload_mode_open = false
+	upload_mode_state = "dongle"
+	_set_status(_t("upload_restore_status"))
+
+
+func _handle_upload_mode_action(action: String) -> void:
+	match action:
+		"confirm", "back", "language_select":
+			_close_upload_mode()
 
 
 func _handle_keyboard_action(action: String) -> void:
@@ -977,9 +1006,18 @@ func _draw_ota_page() -> void:
 	var meta = _t("copy_firmware")
 	if firmware_size > 0:
 		meta = "Size %.1f KB  MD5 %s..." % [float(firmware_size) / 1024.0, firmware_md5.substr(0, 16)]
-	_draw_text(_t("firmware_update") % [fw, meta], 36, 160, C_ACCENT, 13)
+	_draw_text(_t("firmware_update") % [fw, meta], 36, 154, C_ACCENT, 12)
+	var upload_rect = Rect2(36, 206, 650, 36)
+	draw_rect(upload_rect, C_INPUT, true)
+	draw_rect(upload_rect, C_LINE, false, 1.0)
+	_draw_text(_t("ota_upload_panel"), upload_rect.position.x + 12, upload_rect.position.y + 9, C_TEXT, 13)
+	_draw_text(_t("ota_upload_hint"), upload_rect.position.x + 338, upload_rect.position.y + 9, C_DIM, 11)
+	if int(selected[2]) == 0:
+		draw_rect(upload_rect, C_ACCENT, false, 2.0)
+		draw_rect(Rect2(upload_rect.position.x, upload_rect.position.y, 5, upload_rect.size.y), C_ACCENT, true)
 
-	_draw_action_rail(Rect2(18, 284, 260, 226), _texts(OTA_ITEM_KEYS), int(selected[2]))
+	var ota_rail_selection = int(selected[2]) - 1
+	_draw_action_rail(Rect2(18, 284, 260, 226), _texts(OTA_ITEM_KEYS.slice(1, 5)), ota_rail_selection)
 	_draw_panel(Rect2(300, 284, 402, 226), C_PANEL, C_LINE)
 	_draw_text(_t("transfer_state") % ota_state.to_upper(), 318, 306, C_TEXT, 11)
 	_draw_progress_bar(Rect2(318, 382, 360, 30), ota_progress, "%d%%  %.1f KB/s" % [ota_progress, ota_speed_kbps])
@@ -1022,6 +1060,44 @@ func _draw_can_page() -> void:
 		draw_rect(row_rect, C_LINE, false, 1.0)
 		_draw_text(str(row.get("line", "")).substr(0, 72), 250, y + 5, C_TEXT, 11)
 		y += 34
+
+
+func _draw_upload_mode_page() -> void:
+	draw_rect(Rect2(Vector2.ZERO, get_viewport_rect().size), C_BG, true)
+	var rect = Rect2(52, 54, 616, 574)
+	draw_rect(rect, C_BG_2, true)
+	draw_rect(rect, C_ACCENT, false, 2.0)
+	draw_line(rect.position, rect.position + Vector2(28, 0), C_ACCENT, 3.0)
+	draw_line(rect.position, rect.position + Vector2(0, 28), C_ACCENT, 3.0)
+	_draw_text(_t("upload_title"), rect.position.x + 28, rect.position.y + 30, C_TEXT, 24)
+	_draw_text(_t("upload_subtitle"), rect.position.x + 28, rect.position.y + 82, C_TEXT, 15)
+
+	var mode_rect = Rect2(rect.position.x + 28, rect.position.y + 128, rect.size.x - 56, 62)
+	draw_rect(mode_rect, C_PANEL_2, true)
+	draw_rect(mode_rect, C_LINE, false, 1.0)
+	_draw_text(_t("upload_mode_label"), mode_rect.position.x + 16, mode_rect.position.y + 17, C_TEXT, 15)
+	_draw_text(_t("upload_mode_value"), mode_rect.position.x + 220, mode_rect.position.y + 16, C_ACCENT, 16)
+
+	var wifi_rect = Rect2(rect.position.x + 28, rect.position.y + 216, rect.size.x - 56, 156)
+	draw_rect(wifi_rect, C_PANEL_2, true)
+	draw_rect(wifi_rect, C_LINE, false, 1.0)
+	_draw_text(_t("upload_wifi"), wifi_rect.position.x + 18, wifi_rect.position.y + 18, C_TEXT, 15)
+	_draw_text("RGB30-FIRMWARE", wifi_rect.position.x + 18, wifi_rect.position.y + 48, C_ACCENT, 21)
+	_draw_text(_t("upload_url"), wifi_rect.position.x + 18, wifi_rect.position.y + 92, C_TEXT, 15)
+	_draw_text("http://192.168.4.1:8080", wifi_rect.position.x + 18, wifi_rect.position.y + 120, C_ACCENT_2, 17)
+
+	var file_rect = Rect2(rect.position.x + 28, rect.position.y + 398, rect.size.x - 56, 76)
+	draw_rect(file_rect, C_PANEL_2, true)
+	draw_rect(file_rect, C_LINE, false, 1.0)
+	_draw_text(_t("upload_save_path"), file_rect.position.x + 18, file_rect.position.y + 14, C_TEXT, 15)
+	_draw_text("/storage/firmware.bin", file_rect.position.x + 18, file_rect.position.y + 44, C_ACCENT, 16)
+
+	var exit_rect = Rect2(128, 548, 464, 52)
+	draw_rect(exit_rect, C_INPUT, true)
+	draw_rect(exit_rect, C_LINE, false, 1.0)
+	_draw_text(_t("upload_exit"), exit_rect.position.x, exit_rect.position.y + 15, C_TEXT, 17, HORIZONTAL_ALIGNMENT_CENTER, exit_rect.size.x)
+	draw_rect(exit_rect, C_WARN, false, 2.0)
+	draw_rect(Rect2(exit_rect.position.x, exit_rect.position.y, 6, exit_rect.size.y), C_WARN, true)
 
 
 func _draw_virtual_keyboard() -> void:
@@ -1078,9 +1154,10 @@ func _draw_action_rail(rect: Rect2, items: Array, selected_index: int) -> void:
 		draw_rect(r, C_LINE, false, 1.0)
 		_draw_text(items[i], r.position.x, r.position.y + 10, C_TEXT, 15, HORIZONTAL_ALIGNMENT_CENTER, r.size.x)
 		y += 46
-	var selected_rect = Rect2(rect.position.x + 14, rect.position.y + 48 + selected_index * 46, rect.size.x - 28, 38)
-	draw_rect(selected_rect, C_ACCENT, false, 2.0)
-	draw_rect(Rect2(selected_rect.position.x, selected_rect.position.y, 5, selected_rect.size.y), C_ACCENT, true)
+	if selected_index >= 0 and selected_index < items.size():
+		var selected_rect = Rect2(rect.position.x + 14, rect.position.y + 48 + selected_index * 46, rect.size.x - 28, 38)
+		draw_rect(selected_rect, C_ACCENT, false, 2.0)
+		draw_rect(Rect2(selected_rect.position.x, selected_rect.position.y, 5, selected_rect.size.y), C_ACCENT, true)
 
 
 func _draw_telemetry_grid(rect: Rect2) -> void:
