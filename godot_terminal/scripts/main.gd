@@ -152,6 +152,11 @@ var ota_start_msec = 0                      # 传输开始时间
 var last_ota_send_msec = 0                  # 上次发送数据块时间
 var upload_mode_open = false                # 是否打开固件上传模式界面
 var upload_mode_state = "dongle"            # dongle/upload
+var upload_network_mode = "hotspot"         # hotspot/lan/mock
+var upload_ssid = "RGB30-FIRMWARE"          # 上传模式Wi-Fi名称
+var upload_password = "rgb30firmware"       # 上传模式Wi-Fi密码
+var upload_url = "http://192.168.4.1:8080"  # 浏览器上传地址
+var upload_status = ""                      # 上传服务状态提示
 
 ## CAN日志页面状态
 var can_filter = ""                         # CAN日志过滤字段
@@ -604,12 +609,17 @@ func _confirm_current_selection() -> void:
 func _open_upload_mode() -> void:
 	upload_mode_open = true
 	upload_mode_state = "upload"
-	_set_status(_t("upload_mode_status"))
+	upload_status = _t("upload_starting")
+	_set_status(_t("upload_starting"))
+	_start_upload_service()
 
 
 func _close_upload_mode() -> void:
+	_stop_upload_service()
 	upload_mode_open = false
 	upload_mode_state = "dongle"
+	if FileAccess.file_exists("/storage/firmware.bin"):
+		_load_default_firmware()
 	_set_status(_t("upload_restore_status"))
 
 
@@ -617,6 +627,52 @@ func _handle_upload_mode_action(action: String) -> void:
 	match action:
 		"confirm", "back", "language_select":
 			_close_upload_mode()
+
+
+func _start_upload_service() -> void:
+	if not FileAccess.file_exists(AppSettings.UPLOAD_MODE_SCRIPT):
+		upload_network_mode = "mock"
+		upload_ssid = "RGB30-FIRMWARE"
+		upload_password = "rgb30firmware"
+		upload_url = "http://192.168.4.1:8080"
+		upload_status = _t("upload_script_missing")
+		return
+	var output: Array = []
+	var code = OS.execute("/bin/sh", [AppSettings.UPLOAD_MODE_SCRIPT, "start"], output, true, false)
+	var line = "\n".join(output).strip_edges()
+	_apply_upload_service_output(line)
+	if code == 0:
+		upload_status = _t("upload_ready") if upload_network_mode == "hotspot" else _t("upload_fallback")
+	else:
+		upload_status = "start failed: %d" % code
+
+
+func _stop_upload_service() -> void:
+	if not FileAccess.file_exists(AppSettings.UPLOAD_MODE_SCRIPT):
+		return
+	var output: Array = []
+	OS.execute("/bin/sh", [AppSettings.UPLOAD_MODE_SCRIPT, "stop"], output, true, false)
+
+
+func _apply_upload_service_output(line: String) -> void:
+	var parts = line.split(" ", false)
+	for part in parts:
+		var eq = part.find("=")
+		if eq <= 0:
+			continue
+		var key = part.substr(0, eq)
+		var value = part.substr(eq + 1)
+		match key:
+			"mode":
+				upload_network_mode = value
+			"ssid":
+				if value != "":
+					upload_ssid = value
+			"password":
+				upload_password = value
+			"url":
+				if value != "":
+					upload_url = value
 
 
 func _handle_keyboard_action(action: String) -> void:
@@ -1072,32 +1128,39 @@ func _draw_upload_mode_page() -> void:
 	_draw_text(_t("upload_title"), rect.position.x + 28, rect.position.y + 30, C_TEXT, 24)
 	_draw_text(_t("upload_subtitle"), rect.position.x + 28, rect.position.y + 82, C_TEXT, 15)
 
-	var mode_rect = Rect2(rect.position.x + 28, rect.position.y + 128, rect.size.x - 56, 62)
-	draw_rect(mode_rect, C_PANEL_2, true)
-	draw_rect(mode_rect, C_LINE, false, 1.0)
-	_draw_text(_t("upload_mode_label"), mode_rect.position.x + 16, mode_rect.position.y + 17, C_TEXT, 15)
-	_draw_text(_t("upload_mode_value"), mode_rect.position.x + 220, mode_rect.position.y + 16, C_ACCENT, 16)
+	_draw_upload_value_section(_t("upload_wifi"), upload_ssid, 160, 21)
+	_draw_upload_value_section(_t("upload_url"), upload_url, 264, 17)
+	_draw_upload_value_section(_t("upload_save_path"), "/storage/firmware.bin", 368, 17)
+	_draw_text(_t("upload_password") + ": " + (upload_password if upload_password != "" else "-"), 170, 502, C_TEXT, 14)
+	_draw_text(_t("upload_status") + ": " + upload_status, 170, 526, C_TEXT, 14)
 
-	var wifi_rect = Rect2(rect.position.x + 28, rect.position.y + 216, rect.size.x - 56, 156)
-	draw_rect(wifi_rect, C_PANEL_2, true)
-	draw_rect(wifi_rect, C_LINE, false, 1.0)
-	_draw_text(_t("upload_wifi"), wifi_rect.position.x + 18, wifi_rect.position.y + 18, C_TEXT, 15)
-	_draw_text("RGB30-FIRMWARE", wifi_rect.position.x + 18, wifi_rect.position.y + 48, C_ACCENT, 21)
-	_draw_text(_t("upload_url"), wifi_rect.position.x + 18, wifi_rect.position.y + 92, C_TEXT, 15)
-	_draw_text("http://192.168.4.1:8080", wifi_rect.position.x + 18, wifi_rect.position.y + 120, C_ACCENT_2, 17)
-
-	var file_rect = Rect2(rect.position.x + 28, rect.position.y + 398, rect.size.x - 56, 76)
-	draw_rect(file_rect, C_PANEL_2, true)
-	draw_rect(file_rect, C_LINE, false, 1.0)
-	_draw_text(_t("upload_save_path"), file_rect.position.x + 18, file_rect.position.y + 14, C_TEXT, 15)
-	_draw_text("/storage/firmware.bin", file_rect.position.x + 18, file_rect.position.y + 44, C_ACCENT, 16)
-
-	var exit_rect = Rect2(128, 548, 464, 52)
+	var exit_rect = Rect2(128, 598, 464, 52)
 	draw_rect(exit_rect, C_INPUT, true)
 	draw_rect(exit_rect, C_LINE, false, 1.0)
 	_draw_text(_t("upload_exit"), exit_rect.position.x, exit_rect.position.y + 15, C_TEXT, 17, HORIZONTAL_ALIGNMENT_CENTER, exit_rect.size.x)
 	draw_rect(exit_rect, C_WARN, false, 2.0)
 	draw_rect(Rect2(exit_rect.position.x, exit_rect.position.y, 6, exit_rect.size.y), C_WARN, true)
+
+
+func _draw_upload_value_section(title: String, value: String, y: float, value_size: int) -> void:
+	var title_rect = Rect2(285, y, 150, 30)
+	draw_rect(title_rect, C_INPUT, true)
+	draw_rect(title_rect, C_LINE, false, 1.0)
+	_draw_text(title, title_rect.position.x, title_rect.position.y + 5, C_TEXT, 17, HORIZONTAL_ALIGNMENT_CENTER, title_rect.size.x)
+	var value_rect = Rect2(170, y + 38, 380, 50)
+	draw_rect(value_rect, C_BG, true)
+	draw_rect(value_rect, C_BG_2, false, 1.0)
+	_draw_text(value, value_rect.position.x, value_rect.position.y + 13, C_TEXT, value_size, HORIZONTAL_ALIGNMENT_CENTER, value_rect.size.x)
+
+
+func _upload_mode_display() -> String:
+	if upload_network_mode == "hotspot":
+		return _t("upload_mode_value")
+	if upload_network_mode == "lan":
+		return "CURRENT WI-FI"
+	if upload_network_mode == "mock":
+		return "UI ONLY"
+	return upload_network_mode.to_upper()
 
 
 func _draw_virtual_keyboard() -> void:

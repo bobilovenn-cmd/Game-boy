@@ -31,3 +31,4 @@ const FIRMWARE_PATHS = [
 	"/storage/motor_firmware.bin",
 ]
 
+const UPLOAD_MODE_SCRIPT = "/storage/handheld_terminal_godot/rgb30_upload_mode.sh"
