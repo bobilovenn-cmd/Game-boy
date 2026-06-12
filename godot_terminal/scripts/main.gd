@@ -152,10 +152,10 @@ var ota_start_msec = 0                      # 传输开始时间
 var last_ota_send_msec = 0                  # 上次发送数据块时间
 var upload_mode_open = false                # 是否打开固件上传模式界面
 var upload_mode_state = "dongle"            # dongle/upload
-var upload_network_mode = "hotspot"         # hotspot/lan/mock
-var upload_ssid = "RGB30-FIRMWARE"          # 上传模式Wi-Fi名称
-var upload_password = "rgb30firmware"       # 上传模式Wi-Fi密码
-var upload_url = "http://192.168.4.1:8080"  # 浏览器上传地址
+var upload_network_mode = "wifi"            # wifi/mock
+var upload_ssid = "same_wifi"               # RGB30当前连接的Wi-Fi名称
+var upload_password = ""                    # Wi-Fi方案不显示密码
+var upload_url = "http://RGB30_IP:8080"      # 浏览器上传地址
 var upload_status = ""                      # 上传服务状态提示
 
 ## CAN日志页面状态
@@ -267,6 +267,10 @@ func _draw() -> void:
 		_draw_upload_mode_page() # 固件上传模式独立页面
 		_draw_status_overlay()
 		return
+	if keyboard_open:
+		_draw_filter_input_page() # CAN过滤字段独立输入界面
+		_draw_status_overlay()
+		return
 
 	_draw_header()               # 顶部标题栏(LINK/UDP状态指示)
 	_draw_tabs()                 # 页面标签栏(监控/配置/升级)
@@ -283,8 +287,6 @@ func _draw() -> void:
 			_draw_can_page()       # CAN日志页: 接收日志 + 过滤输入
 
 	_draw_status_overlay()       # 状态提示浮层
-	if keyboard_open:
-		_draw_virtual_keyboard()
 	_draw_footer()               # 底部快捷键提示栏
 
 
@@ -632,9 +634,9 @@ func _handle_upload_mode_action(action: String) -> void:
 func _start_upload_service() -> void:
 	if not FileAccess.file_exists(AppSettings.UPLOAD_MODE_SCRIPT):
 		upload_network_mode = "mock"
-		upload_ssid = "RGB30-FIRMWARE"
-		upload_password = "rgb30firmware"
-		upload_url = "http://192.168.4.1:8080"
+		upload_ssid = "same_wifi"
+		upload_password = ""
+		upload_url = "http://RGB30_IP:8080"
 		upload_status = _t("upload_script_missing")
 		return
 	var output: Array = []
@@ -642,7 +644,7 @@ func _start_upload_service() -> void:
 	var line = "\n".join(output).strip_edges()
 	_apply_upload_service_output(line)
 	if code == 0:
-		upload_status = _t("upload_ready") if upload_network_mode == "hotspot" else _t("upload_fallback")
+		upload_status = _t("upload_ready")
 	else:
 		upload_status = "start failed: %d" % code
 
@@ -708,6 +710,7 @@ func _apply_keyboard_key(key: String) -> void:
 			can_filter = ""
 		"OK":
 			keyboard_open = false
+			_set_status(_t("can_filter_label") + ": " + (can_filter if can_filter != "" else _t("can_all")))
 		"SHIFT":
 			keyboard_lowercase = not keyboard_lowercase
 		_:
@@ -1096,7 +1099,8 @@ func _draw_can_page() -> void:
 	_draw_text(can_filter if can_filter != "" else _t("can_all"), input_rect.position.x + 10, input_rect.position.y + 7, C_TEXT if can_filter != "" else C_DIM_2, 12)
 	if can_paused:
 		_draw_text(_t("can_paused"), 604, 194, C_WARN, 12)
-	_draw_text("RX %d" % can_rx_count, 596, 158, C_ACCENT, 13)
+	var visible_count = _filtered_can_rows().size()
+	_draw_text("RX %d/%d" % [visible_count, can_rows.size()], 580, 158, C_ACCENT, 13)
 	var last_line = can_last_line if can_last_line != "" else "WAIT UDP PACKETS"
 	_draw_text(last_line.substr(0, 64), 36, 224, C_TEXT, 12)
 
@@ -1120,7 +1124,7 @@ func _draw_can_page() -> void:
 
 func _draw_upload_mode_page() -> void:
 	draw_rect(Rect2(Vector2.ZERO, get_viewport_rect().size), C_BG, true)
-	var rect = Rect2(52, 54, 616, 574)
+	var rect = Rect2(52, 54, 616, 520)
 	draw_rect(rect, C_BG_2, true)
 	draw_rect(rect, C_ACCENT, false, 2.0)
 	draw_line(rect.position, rect.position + Vector2(28, 0), C_ACCENT, 3.0)
@@ -1131,8 +1135,7 @@ func _draw_upload_mode_page() -> void:
 	_draw_upload_value_section(_t("upload_wifi"), upload_ssid, 160, 21)
 	_draw_upload_value_section(_t("upload_url"), upload_url, 264, 17)
 	_draw_upload_value_section(_t("upload_save_path"), "/storage/firmware.bin", 368, 17)
-	_draw_text(_t("upload_password") + ": " + (upload_password if upload_password != "" else "-"), 170, 502, C_TEXT, 14)
-	_draw_text(_t("upload_status") + ": " + upload_status, 170, 526, C_TEXT, 14)
+	_draw_text(_t("upload_status") + ": " + upload_status, 170, 510, C_TEXT, 14)
 
 	var exit_rect = Rect2(128, 598, 464, 52)
 	draw_rect(exit_rect, C_INPUT, true)
@@ -1154,27 +1157,32 @@ func _draw_upload_value_section(title: String, value: String, y: float, value_si
 
 
 func _upload_mode_display() -> String:
-	if upload_network_mode == "hotspot":
-		return _t("upload_mode_value")
-	if upload_network_mode == "lan":
-		return "CURRENT WI-FI"
+	if upload_network_mode == "wifi":
+		return "WIFI"
 	if upload_network_mode == "mock":
 		return "UI ONLY"
 	return upload_network_mode.to_upper()
 
 
-func _draw_virtual_keyboard() -> void:
-	var rect = Rect2(28, 338, 664, 318)
-	draw_rect(rect, Color(C_INPUT, 0.98), true)
+func _draw_filter_input_page() -> void:
+	draw_rect(Rect2(Vector2.ZERO, get_viewport_rect().size), C_BG, true)
+	var rect = Rect2(28, 72, 664, 548)
+	draw_rect(rect, C_BG_2, true)
 	draw_rect(rect, C_ACCENT, false, 2.0)
-	_draw_text(_t("keyboard_title"), rect.position.x + 18, rect.position.y + 12, C_ACCENT, 13)
-	_draw_text(_t("keyboard_hint"), rect.position.x + 210, rect.position.y + 12, C_DIM, 11)
-	_draw_text(_t("can_filter_label"), rect.position.x + 18, rect.position.y + 44, C_DIM, 12)
-	_draw_text(can_filter, rect.position.x + 88, rect.position.y + 44, C_TEXT, 12)
+	draw_line(rect.position, rect.position + Vector2(28, 0), C_ACCENT, 3.0)
+	draw_line(rect.position, rect.position + Vector2(0, 28), C_ACCENT, 3.0)
+	_draw_text(_t("keyboard_title"), rect.position.x + 22, rect.position.y + 24, C_TEXT, 22)
+	_draw_text(_t("keyboard_hint"), rect.position.x + 22, rect.position.y + 62, C_DIM, 13)
+
+	var input_rect = Rect2(rect.position.x + 44, rect.position.y + 102, rect.size.x - 88, 52)
+	draw_rect(input_rect, C_INPUT, true)
+	draw_rect(input_rect, C_LINE, false, 1.0)
+	_draw_text(_t("can_filter_label") + ":", input_rect.position.x + 16, input_rect.position.y + 15, C_TEXT, 16)
+	_draw_text(can_filter if can_filter != "" else _t("can_all"), input_rect.position.x + 104, input_rect.position.y + 15, C_TEXT if can_filter != "" else C_DIM_2, 16)
 
 	var key_h = 30.0
 	var gap = 6.0
-	var y = rect.position.y + 82
+	var y = rect.position.y + 186
 	for row_index in KEYBOARD_ROWS.size():
 		var row: Array = KEYBOARD_ROWS[row_index]
 		var key_w = 56.0
@@ -1200,7 +1208,7 @@ func _draw_virtual_keyboard() -> void:
 		selected_key_w = 58.0
 	var selected_row_w = float(selected_row.size()) * selected_key_w + float(selected_row.size() - 1) * gap
 	var selected_x = rect.position.x + (rect.size.x - selected_row_w) * 0.5 + keyboard_col * (selected_key_w + gap)
-	var selected_y = rect.position.y + 82 + keyboard_row * (key_h + gap)
+	var selected_y = rect.position.y + 186 + keyboard_row * (key_h + gap)
 	var selected_rect = Rect2(selected_x, selected_y, selected_key_w, key_h)
 	draw_rect(selected_rect, C_ACCENT, false, 2.0)
 	draw_rect(Rect2(selected_rect.position.x, selected_rect.position.y, 5, selected_rect.size.y), C_ACCENT, true)
@@ -1378,12 +1386,11 @@ func _can_action_labels() -> Array[String]:
 func _filtered_can_rows() -> Array[Dictionary]:
 	if can_filter.strip_edges() == "":
 		return can_rows
-	var needle = can_filter.to_lower()
+	var needle = can_filter.strip_edges().to_lower()
 	var rows: Array[Dictionary] = []
 	for row in can_rows:
 		var line = str(row.get("line", "")).to_lower()
-		var raw = str(row.get("raw", "")).to_lower()
-		if line.contains(needle) or raw.contains(needle):
+		if line.contains(needle):
 			rows.append(row)
 	return rows
 
