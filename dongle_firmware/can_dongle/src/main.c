@@ -46,9 +46,7 @@ LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 #define MAX_CAN_FRAMES_PER_LOOP		4
 #define CAN_LOG_INTERVAL_MS		20
 
-/* ---- 模拟电机状态 (Phase 0 占位数据) ---- */
-/* 当没有真实 CAN 数据时，发送这些占位值，
- * 使 Godot Monitor 页面有数据显示 */
+/* ---- 电机状态（从 CAN 总线实时读取） ---- */
 static struct {
 	float current;
 	float voltage;
@@ -67,12 +65,14 @@ static struct {
 	.torque = 0.0f,
 	.status_word = 0x0040,   /* Switch On Disabled */
 	.fault = 0,
-	.mode = 8,               /* CSP (Cyclic Synchronous Position) */
-	.alive = true,
+	.mode = 3,               /* Profile Velocity */
+	.alive = false,
 };
 
 /* ---- 内部状态 ---- */
 static bool motor_enabled = false;
+static bool profile_configured = false;
+#define DEFAULT_NODE 2
 
 /* ---- 前向声明 ---- */
 static void handle_command(const parsed_cmd_t *cmd);
@@ -110,6 +110,54 @@ int main(void)
 		LOG_WRN("CAN init failed: %d. "
 			"Dongle will run without CAN. "
 			"Check wiring: RX=GPIO19, TX=GPIO20.", ret);
+	} else {
+		/* 4. 扫描 CAN 总线找到电机 */
+		k_msleep(500);
+		can_diag();
+
+		/* 先发送 NMT 复位唤醒电机 (0x82 = reset node, 0x81 = reset communication) */
+		LOG_INF("Sending NMT reset to node 2...");
+		{
+			can_frame_t nrst;
+			memset(&nrst, 0, sizeof(nrst));
+			nrst.id = 0x000;
+			nrst.dlc = 2;
+			nrst.data[0] = 0x82; /* NMT reset node */
+			nrst.data[1] = 2;
+			can_raw_send(&nrst);
+		}
+		k_msleep(1000);
+		can_diag();
+
+		LOG_INF("Scanning CAN bus for motor (node 1-8)...");
+		int found_node = -1;
+		for (int n = 1; n <= 8; n++) {
+			LOG_INF("  Trying node %d...", n);
+			int dev = co_sdo_read((uint8_t)n, 0x1000, 0);
+			if (dev >= 0) {
+				LOG_INF("  Node %d responds! Device type = 0x%08X", n, dev);
+				found_node = n;
+				break;
+			}
+		}
+		if (found_node < 0) {
+			LOG_WRN("No motor found on CAN bus (scanned node 1-8)");
+		}
+		/* 扫描后再读一次错误计数器，看 TX errors 是否增加 */
+		can_diag();
+
+		LOG_INF("Waiting for motor node %d to become operational...",
+			DEFAULT_NODE);
+		if (co_wait_operational(DEFAULT_NODE, 5000) == 0) {
+			motor_state.alive = true;
+			if (co_init_profile(DEFAULT_NODE) == 0) {
+				profile_configured = true;
+				LOG_INF("Motor profile configured successfully");
+			}
+		} else {
+			LOG_WRN("Motor node %d not reachable. "
+				"Motor control will not work.", DEFAULT_NODE);
+		}
 	}
 
 	LOG_INF("Dongle ready. Waiting for RGB30 heartbeat...");
@@ -203,8 +251,15 @@ static void handle_command(const parsed_cmd_t *cmd)
 		LOG_INF("ENABLE node=%d from %s", cmd->node, client_ip);
 		if (co_basic_enable((uint8_t)cmd->node) == 0) {
 			motor_enabled = true;
-			motor_state.status_word = 0x0027; /* Operation Enabled */
 			motor_state.fault = 0;
+			/* 从 CAN 读取真实状态字 */
+			int sw = co_read_status_word((uint8_t)cmd->node);
+			if (sw >= 0) {
+				motor_state.status_word = sw;
+				LOG_INF("Motor status word = 0x%04X", sw);
+			} else {
+				motor_state.status_word = 0x0027;
+			}
 			ack_len = json_build_ack(ack_buf, sizeof(ack_buf), cmd->seq,
 						 "ok", "motor enabled", cmd->node);
 		} else {
@@ -232,6 +287,12 @@ static void handle_command(const parsed_cmd_t *cmd)
 				  cmd->direction[1] == 'c') ?
 				 -cmd->speed : cmd->speed;
 		if (motor_enabled) {
+			if (!profile_configured) {
+				/* 首次 jog 前补配置运动参数 */
+				if (co_init_profile((uint8_t)cmd->node) == 0) {
+					profile_configured = true;
+				}
+			}
 			co_basic_jog((uint8_t)cmd->node, target_rpm);
 			motor_state.speed = target_rpm;
 		}
@@ -253,22 +314,17 @@ static void handle_command(const parsed_cmd_t *cmd)
 		LOG_INF("SDO_READ node=%d idx=0x%04X sub=%d from %s",
 			cmd->node, cmd->index, cmd->sub, client_ip);
 
-		/* Phase 0: 返回占位 SDO 值 */
-		int sdo_val = 0;
-		switch (cmd->index) {
-		case 0x6060: sdo_val = motor_state.mode; break;
-		case 0x6040: sdo_val = motor_enabled ? 0x000F : 0x0006; break;
-		case 0x60FF: sdo_val = motor_state.speed; break;
-		case 0x6071: sdo_val = (int)(motor_state.torque * 1000); break;
-		default: sdo_val = 0; break;
-		}
+		/* 从 CAN 总线真实读取 SDO */
+		int sdo_val = co_sdo_read((uint8_t)cmd->node,
+						 cmd->index, cmd->sub);
 
 		char sdo_buf[256];
 		int sdo_len = snprintf(sdo_buf, sizeof(sdo_buf),
 			"{\"cmd\":\"sdo_read_result\",\"seq\":%d,\"ts\":0,"
 			"\"payload\":{\"index\":%d,\"sub\":%d,"
 			"\"data\":\"0x%X\",\"node\":%d}}",
-			cmd->seq, cmd->index, cmd->sub, sdo_val, cmd->node);
+			cmd->seq, cmd->index, cmd->sub,
+			(sdo_val >= 0) ? sdo_val : 0xDEAD, cmd->node);
 		udp_send(sdo_buf, sdo_len);
 		break;
 	}
@@ -276,9 +332,22 @@ static void handle_command(const parsed_cmd_t *cmd)
 	case CMD_SDO_WRITE:
 		LOG_INF("SDO_WRITE node=%d idx=0x%04X sub=%d data=%d from %s",
 			cmd->node, cmd->index, cmd->sub, cmd->data, client_ip);
-		/* Phase 0: 只是 ack，不真正操作硬件 */
-		ack_len = json_build_ack(ack_buf, sizeof(ack_buf), cmd->seq,
-					 "ok", "sdo write", cmd->node);
+		/* 真实写入 CAN 总线 */
+		{
+			int ret = co_sdo_write((uint8_t)cmd->node,
+					       (uint16_t)cmd->index,
+					       (uint8_t)cmd->sub,
+					       (uint32_t)cmd->data, 4);
+			if (ret == 0) {
+				ack_len = json_build_ack(ack_buf, sizeof(ack_buf),
+							 cmd->seq, "ok",
+							 "sdo write ok", cmd->node);
+			} else {
+				ack_len = json_build_ack(ack_buf, sizeof(ack_buf),
+							 cmd->seq, "error",
+							 "sdo write failed", cmd->node);
+			}
+		}
 		udp_send(ack_buf, ack_len);
 		break;
 
@@ -331,6 +400,23 @@ static void handle_command(const parsed_cmd_t *cmd)
 static void send_motor_status(void)
 {
 	char buf[512];
+
+	/* 从 CAN 读取真实电机数据 */
+	if (motor_state.alive) {
+		int vel = co_read_actual_velocity(DEFAULT_NODE);
+		if (vel >= -1000000 && vel <= 1000000) {
+			motor_state.speed = vel;
+		}
+		/* 每 5 次读一次状态字（减少 CAN 负载） */
+		static int status_read_cnt = 0;
+		if (++status_read_cnt >= 5) {
+			status_read_cnt = 0;
+			int sw = co_read_status_word(DEFAULT_NODE);
+			if (sw >= 0) {
+				motor_state.status_word = sw;
+			}
+		}
+	}
 
 	/* 更新看门狗剩余时间 */
 	int wdg_remaining = wdg_remaining_ms();

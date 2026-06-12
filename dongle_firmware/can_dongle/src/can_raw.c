@@ -51,6 +51,44 @@ static void log_can_state(const char *where)
 		where, state, err_cnt.tx_err_cnt, err_cnt.rx_err_cnt);
 }
 
+/* 公开诊断函数：打印 CAN 控制器状态和错误计数 */
+void can_diag(void)
+{
+	if (!can_dev) {
+		LOG_ERR("CAN diag: device not ready");
+		return;
+	}
+
+	enum can_state state;
+	struct can_bus_err_cnt err_cnt;
+	int ret = can_get_state(can_dev, &state, &err_cnt);
+	if (ret < 0) {
+		LOG_ERR("CAN diag: get_state failed: %d", ret);
+		return;
+	}
+
+	const char *state_str;
+	switch (state) {
+	case CAN_STATE_ERROR_ACTIVE:  state_str = "Error-Active (OK)"; break;
+	case CAN_STATE_ERROR_WARNING: state_str = "Error-Warning"; break;
+	case CAN_STATE_ERROR_PASSIVE: state_str = "Error-Passive"; break;
+	case CAN_STATE_BUS_OFF:       state_str = "Bus-Off!"; break;
+	case CAN_STATE_STOPPED:       state_str = "Stopped"; break;
+	default:                      state_str = "Unknown"; break;
+	}
+
+	LOG_INF("=== CAN Diagnostics ===");
+	LOG_INF("  State: %s", state_str);
+	LOG_INF("  TX errors: %u, RX errors: %u", err_cnt.tx_err_cnt, err_cnt.rx_err_cnt);
+	if (err_cnt.tx_err_cnt > 0) {
+		LOG_WRN("  TX errors indicate CAN bus wiring issue or no device on bus");
+	}
+	if (state == CAN_STATE_BUS_OFF) {
+		LOG_ERR("  Bus-Off! Check CANH/CANL wiring and termination resistors");
+	}
+	LOG_INF("========================");
+}
+
 static void can_tx_done(const struct device *dev, int error, void *user_data)
 {
 	ARG_UNUSED(dev);

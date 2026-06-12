@@ -61,7 +61,7 @@ static const char *active_gateway(void)
 }
 
 static void wifi_event_handler(struct net_mgmt_event_callback *cb,
-			       uint32_t mgmt_event, struct net_if *iface)
+			       uint64_t mgmt_event, struct net_if *iface)
 {
 	ARG_UNUSED(cb);
 	ARG_UNUSED(iface);
@@ -103,7 +103,7 @@ static int configure_static_ip(void)
 	}
 
 	net_if_ipv4_addr_add(wifi_iface, &addr, NET_ADDR_MANUAL, 0);
-	net_if_ipv4_set_netmask(wifi_iface, &netmask);
+	net_if_ipv4_set_netmask_by_addr(wifi_iface, &addr, &netmask);
 	net_if_ipv4_set_gw(wifi_iface, &gateway);
 	LOG_INF("Static IP configured: %s", active_ip());
 	return 0;
@@ -186,7 +186,7 @@ static int start_sta_mode(void)
 
 static int create_udp_socket(void)
 {
-	udp_sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	udp_sock = zsock_socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (udp_sock < 0) {
 		LOG_ERR("Failed to create UDP socket: %d", udp_sock);
 		return udp_sock;
@@ -197,16 +197,16 @@ static int create_udp_socket(void)
 		.sin_port = htons(UDP_PORT),
 		.sin_addr.s_addr = INADDR_ANY,
 	};
-	int ret = bind(udp_sock, (struct sockaddr *)&bind_addr, sizeof(bind_addr));
+	int ret = zsock_bind(udp_sock, (struct sockaddr *)&bind_addr, sizeof(bind_addr));
 	if (ret < 0) {
 		LOG_ERR("Failed to bind UDP port %d: %d", UDP_PORT, ret);
-		close(udp_sock);
+		zsock_close(udp_sock);
 		udp_sock = -1;
 		return ret;
 	}
 
 	struct timeval tv = { .tv_sec = 0, .tv_usec = 100000 };
-	setsockopt(udp_sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+	zsock_setsockopt(udp_sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 	LOG_INF("UDP socket listening on port %d", UDP_PORT);
 	return 0;
 }
@@ -253,12 +253,12 @@ int udp_recv(char *buf, int buf_size, int timeout_ms)
 		.tv_sec = timeout_ms / 1000,
 		.tv_usec = (timeout_ms % 1000) * 1000,
 	};
-	setsockopt(udp_sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+	zsock_setsockopt(udp_sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
 	struct sockaddr_in src_addr;
 	socklen_t src_len = sizeof(src_addr);
-	int ret = recvfrom(udp_sock, buf, buf_size - 1, 0,
-			   (struct sockaddr *)&src_addr, &src_len);
+	int ret = zsock_recvfrom(udp_sock, buf, buf_size - 1, 0,
+				 (struct sockaddr *)&src_addr, &src_len);
 	if (ret > 0) {
 		buf[ret] = '\0';
 		memcpy(&client_addr, &src_addr, sizeof(client_addr));
@@ -270,9 +270,9 @@ int udp_recv(char *buf, int buf_size, int timeout_ms)
 int udp_send(const char *data, int len)
 {
 	if (!has_client) return -ENOTCONN;
-	ssize_t ret = sendto(udp_sock, data, len, 0,
-			     (struct sockaddr *)&client_addr,
-			     sizeof(client_addr));
+	ssize_t ret = zsock_sendto(udp_sock, data, len, 0,
+				   (struct sockaddr *)&client_addr,
+				   sizeof(client_addr));
 	return (int)ret;
 }
 
@@ -285,8 +285,8 @@ int udp_sendto(const char *data, int len, const char *ip, int port)
 	if (net_addr_pton(AF_INET, ip, &dest.sin_addr) < 0) {
 		return -EINVAL;
 	}
-	ssize_t ret = sendto(udp_sock, data, len, 0,
-			     (struct sockaddr *)&dest, sizeof(dest));
+	ssize_t ret = zsock_sendto(udp_sock, data, len, 0,
+				   (struct sockaddr *)&dest, sizeof(dest));
 	return (int)ret;
 }
 

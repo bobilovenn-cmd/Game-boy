@@ -1,0 +1,40 @@
+/ {
+	aliases {
+		can0 = &twai;
+	};
+
+	chosen {
+		zephyr,console = &usb_serial;
+		zephyr,shell-uart = &usb_serial;
+	};
+};
+
+&wifi {
+	status = "okay";
+};
+
+&usb_serial {
+	status = "okay";
+};
+
+&uart0 {
+	status = "disabled";
+};
+
+&twai {
+	status = "okay";
+	bus-speed = <1000000>;
+	/* TX=GPIO15 确认可用, RX=GPIO16 + 内部上拉 */
+	pinctrl-0 = <&twai_custom>;
+	pinctrl-names = "default";
+};
+
+&pinctrl {
+	twai_custom: twai_custom {
+		group1 {
+			pinmux = <TWAI_TX_GPIO15>,
+				 <TWAI_RX_GPIO16>;
+			bias-pull-up;
+		};
+	};
+};

@@ -48,3 +48,9 @@ int can_raw_send(const can_frame_t *frame);
  * @return 写入的字节数
  */
 int can_frame_to_string(const can_frame_t *frame, char *buf, int buf_size);
+
+/**
+ * 诊断 CAN 总线状态：打印状态和错误计数器。
+ * 用于判断 CAN 引脚是否连接正确。
+ */
+void can_diag(void);
