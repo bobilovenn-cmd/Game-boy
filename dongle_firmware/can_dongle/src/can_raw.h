@@ -2,7 +2,7 @@
  * can_raw.h - CAN 原始帧收发模块
  *
  * 负责:
- *   - CAN 控制器初始化 (500 kbps)
+ *   - CAN 控制器初始化 (1000 kbps)
  *   - 接收/发送 CAN 原始帧
  *   - 将 CAN 帧格式化为可读字符串
  */
@@ -24,7 +24,7 @@ typedef struct {
 
 /**
  * 初始化 CAN 控制器。
- * 波特率: 500000
+ * 波特率: 1000000
  * 成功返回 0，失败返回负值。
  */
 int can_init(void);
@@ -40,7 +40,7 @@ int can_recv(can_frame_t *frame);
  * 发送一个 CAN 帧。
  * @return 0: 成功; <0: 错误
  */
-int can_send(const can_frame_t *frame);
+int can_raw_send(const can_frame_t *frame);
 
 /**
  * 将 CAN 帧格式化为可读字符串。

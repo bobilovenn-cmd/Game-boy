@@ -51,7 +51,7 @@ typedef struct {
  * 对于无法识别的 cmd 字符串，out->cmd == CMD_UNKNOWN 但仍然返回 true。
  * 返回 false 表示输入不是有效 JSON。
  */
-bool json_parse(const char *json_str, int len, parsed_cmd_t *out);
+bool cmd_json_parse(const char *json_str, int len, parsed_cmd_t *out);
 
 /*
  * 构建 ack 响应 JSON。

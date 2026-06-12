@@ -1,7 +1,7 @@
 # config.py — 全局配置
 
 # ===== 网络配置 =====
-DONGLE_IP = "192.168.4.1"
+DONGLE_IP = "192.168.31.126"
 DONGLE_UDP_PORT = 5000
 LOCAL_UDP_PORT = 5001
 
@@ -9,8 +9,8 @@ LOCAL_UDP_PORT = 5001
 HEARTBEAT_INTERVAL_MS = 150
 
 # ===== CANopen 默认配置 =====
-DEFAULT_NODE_ID = 1
-CAN_BAUDRATE = 500000
+DEFAULT_NODE_ID = 2
+CAN_BAUDRATE = 1000000
 
 # ===== OTA 配置 =====
 OTA_CHUNK_SIZE = 512

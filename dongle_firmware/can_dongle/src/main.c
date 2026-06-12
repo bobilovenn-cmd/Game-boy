@@ -4,7 +4,7 @@
  * 启动流程:
  *   1. 初始化 Wi-Fi AP 热点 "CAN_Dongle_01", IP 192.168.4.1
  *   2. 监听 UDP 端口 5000
- *   3. 初始化 CAN 控制器 (500 kbps)
+ *   3. 初始化 CAN 控制器 (1000 kbps)
  *   4. 主循环:
  *      - 接收 UDP JSON 命令 → 解析 → 回复 ack
  *      - 接收 CAN 帧 → 格式化 → 发送 can_log 给 RGB30
@@ -34,6 +34,7 @@
 
 #include "udp_comm.h"
 #include "can_raw.h"
+#include "canopen_basic.h"
 #include "json_protocol.h"
 #include "watchdog.h"
 
@@ -42,6 +43,8 @@ LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 /* ---- 配置 ---- */
 #define MOTOR_STATUS_INTERVAL_MS	100
 #define MAIN_LOOP_DELAY_MS		10
+#define MAX_CAN_FRAMES_PER_LOOP		4
+#define CAN_LOG_INTERVAL_MS		20
 
 /* ---- 模拟电机状态 (Phase 0 占位数据) ---- */
 /* 当没有真实 CAN 数据时，发送这些占位值，
@@ -93,7 +96,6 @@ int main(void)
 	ret = udp_init();
 	if (ret < 0) {
 		LOG_ERR("UDP init failed: %d — retrying...", ret);
-		/* 给 Wi-Fi 驱动一点时间稳定 */
 		k_sleep(K_SECONDS(2));
 		ret = udp_init();
 		if (ret < 0) {
@@ -122,7 +124,7 @@ int main(void)
 		int recv_len = udp_recv(recv_buf, sizeof(recv_buf), 10);
 		if (recv_len > 0) {
 			parsed_cmd_t cmd;
-			if (json_parse(recv_buf, recv_len, &cmd)) {
+			if (cmd_json_parse(recv_buf, recv_len, &cmd)) {
 				handle_command(&cmd);
 			} else {
 				LOG_WRN("Failed to parse JSON: %.100s", recv_buf);
@@ -160,6 +162,7 @@ static void handle_command(const parsed_cmd_t *cmd)
 	/* estop 不受安全状态限制 — 始终可以执行 */
 	if (cmd->cmd == CMD_ESTOP) {
 		LOG_WRN("ESTOP received from %s", client_ip);
+		co_basic_estop((uint8_t)cmd->node);
 		motor_enabled = false;
 		motor_state.status_word = 0x0008; /* Fault */
 		motor_state.fault = 1;
@@ -198,16 +201,22 @@ static void handle_command(const parsed_cmd_t *cmd)
 	switch (cmd->cmd) {
 	case CMD_ENABLE:
 		LOG_INF("ENABLE node=%d from %s", cmd->node, client_ip);
-		motor_enabled = true;
-		motor_state.status_word = 0x0027; /* Operation Enabled */
-		motor_state.fault = 0;
-		ack_len = json_build_ack(ack_buf, sizeof(ack_buf), cmd->seq,
-					 "ok", "motor enabled", cmd->node);
+		if (co_basic_enable((uint8_t)cmd->node) == 0) {
+			motor_enabled = true;
+			motor_state.status_word = 0x0027; /* Operation Enabled */
+			motor_state.fault = 0;
+			ack_len = json_build_ack(ack_buf, sizeof(ack_buf), cmd->seq,
+						 "ok", "motor enabled", cmd->node);
+		} else {
+			ack_len = json_build_ack(ack_buf, sizeof(ack_buf), cmd->seq,
+						 "error", "CAN enable failed", cmd->node);
+		}
 		udp_send(ack_buf, ack_len);
 		break;
 
 	case CMD_DISABLE:
 		LOG_INF("DISABLE node=%d from %s", cmd->node, client_ip);
+		co_basic_disable((uint8_t)cmd->node);
 		motor_enabled = false;
 		motor_state.status_word = 0x0021; /* Ready */
 		motor_state.speed = 0;
@@ -219,10 +228,12 @@ static void handle_command(const parsed_cmd_t *cmd)
 	case CMD_JOG_START:
 		LOG_INF("JOG_START node=%d dir=%s speed=%d from %s",
 			cmd->node, cmd->direction, cmd->speed, client_ip);
+		int target_rpm = (cmd->direction[0] == 'c' &&
+				  cmd->direction[1] == 'c') ?
+				 -cmd->speed : cmd->speed;
 		if (motor_enabled) {
-			motor_state.speed = (cmd->direction[0] == 'c' &&
-					     cmd->direction[1] == 'c') ?
-					    -cmd->speed : cmd->speed;
+			co_basic_jog((uint8_t)cmd->node, target_rpm);
+			motor_state.speed = target_rpm;
 		}
 		ack_len = json_build_ack(ack_buf, sizeof(ack_buf), cmd->seq,
 					 "ok", "jog started", cmd->node);
@@ -231,6 +242,7 @@ static void handle_command(const parsed_cmd_t *cmd)
 
 	case CMD_JOG_STOP:
 		LOG_INF("JOG_STOP node=%d from %s", cmd->node, client_ip);
+		co_basic_stop((uint8_t)cmd->node);
 		motor_state.speed = 0;
 		ack_len = json_build_ack(ack_buf, sizeof(ack_buf), cmd->seq,
 					 "ok", "jog stopped", cmd->node);
@@ -344,16 +356,22 @@ static void process_can_frames(void)
 {
 	can_frame_t frame;
 	char log_buf[256];
+	int processed = 0;
+	static int64_t last_can_log_time = 0;
 
-	while (can_recv(&frame) == 1) {
-		/* 转换 CAN 帧 → JSON can_log 消息 */
-		int len = json_build_can_log(log_buf, sizeof(log_buf),
-					     frame.id, frame.data, frame.dlc);
-		udp_send(log_buf, len);
+	while (processed < MAX_CAN_FRAMES_PER_LOOP && can_recv(&frame) == 1) {
+		int64_t now = k_uptime_get();
+		if ((now - last_can_log_time) >= CAN_LOG_INTERVAL_MS) {
+			int len = json_build_can_log(log_buf, sizeof(log_buf),
+						     frame.id, frame.data, frame.dlc);
+			udp_send(log_buf, len);
+			last_can_log_time = now;
+		}
 
 		/* 控制台日志 */
 		char frame_str[128];
 		can_frame_to_string(&frame, frame_str, sizeof(frame_str));
 		LOG_DBG("CAN: %s", frame_str);
+		processed++;
 	}
 }

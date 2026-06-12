@@ -11,19 +11,44 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <ctype.h>
 #include <zephyr/sys/util.h>
 
 /* ---- 内部辅助: 字符串扫描 ---- */
+
+static const char *skip_ws(const char *p)
+{
+	while (*p && isspace((unsigned char)*p)) {
+		p++;
+	}
+	return p;
+}
+
+static const char *json_find_value(const char *s, const char *key)
+{
+	char search[64];
+	int n = snprintf(search, sizeof(search), "\"%s\"", key);
+	const char *p = strstr(s, search);
+	if (!p) {
+		return NULL;
+	}
+
+	p += n;
+	p = skip_ws(p);
+	if (*p != ':') {
+		return NULL;
+	}
+	p++;
+	return skip_ws(p);
+}
 
 /* 在 s 中查找 key 对应的字符串值，写入 val (最大 val_size 字节)。
  * 例: "cmd":"heartbeat" → val="heartbeat" */
 static bool json_get_string(const char *s, const char *key, char *val, int val_size)
 {
-	char search[64];
-	int n = snprintf(search, sizeof(search), "\"%s\":\"", key);
-	const char *p = strstr(s, search);
-	if (!p) return false;
-	p += n;
+	const char *p = json_find_value(s, key);
+	if (!p || *p != '"') return false;
+	p++;
 	int i;
 	for (i = 0; i < val_size - 1 && *p && *p != '"'; i++, p++) {
 		val[i] = *p;
@@ -36,11 +61,8 @@ static bool json_get_string(const char *s, const char *key, char *val, int val_s
  * 支持: "key":123 或 "key":"123" */
 static bool json_get_int(const char *s, const char *key, int *val)
 {
-	char search[64];
-	int n = snprintf(search, sizeof(search), "\"%s\":", key);
-	const char *p = strstr(s, search);
+	const char *p = json_find_value(s, key);
 	if (!p) return false;
-	p += n;
 
 	/* 跳过引号（处理 "key":"123" 的情况） */
 	if (*p == '"') p++;
@@ -52,11 +74,8 @@ static bool json_get_int(const char *s, const char *key, int *val)
 /* 在 s 中查找 key 对应的浮点数值 */
 static bool json_get_float(const char *s, const char *key, float *val)
 {
-	char search[64];
-	int n = snprintf(search, sizeof(search), "\"%s\":", key);
-	const char *p = strstr(s, search);
+	const char *p = json_find_value(s, key);
 	if (!p) return false;
-	p += n;
 	if (*p == '"') p++;
 	*val = (float)atof(p);
 	return true;
@@ -65,11 +84,8 @@ static bool json_get_float(const char *s, const char *key, float *val)
 /* 在 s 中查找 key 对应的布尔值 */
 static bool json_get_bool(const char *s, const char *key, bool *val)
 {
-	char search[64];
-	int n = snprintf(search, sizeof(search), "\"%s\":", key);
-	const char *p = strstr(s, search);
+	const char *p = json_find_value(s, key);
 	if (!p) return false;
-	p += n;
 	if (strncmp(p, "true", 4) == 0) {
 		*val = true;
 		return true;
@@ -81,18 +97,37 @@ static bool json_get_bool(const char *s, const char *key, bool *val)
 	return false;
 }
 
+static int scale_float(float value, int scale)
+{
+	float scaled = value * (float)scale;
+	return (int)(scaled + (scaled >= 0.0f ? 0.5f : -0.5f));
+}
+
+static void format_fixed(char *buf, size_t buf_size, float value, int decimals)
+{
+	int scale = (decimals == 1) ? 10 : 100;
+	int scaled = scale_float(value, scale);
+	int abs_scaled = scaled < 0 ? -scaled : scaled;
+	const char *sign = scaled < 0 ? "-" : "";
+	int whole = abs_scaled / scale;
+	int frac = abs_scaled % scale;
+
+	if (decimals == 1) {
+		snprintf(buf, buf_size, "%s%d.%01d", sign, whole, frac);
+	} else {
+		snprintf(buf, buf_size, "%s%d.%02d", sign, whole, frac);
+	}
+}
+
 /* 内部: 获取 "payload":{"subkey":...} 中的整数值 */
 static bool json_get_payload_int(const char *s, const char *subkey, int *val)
 {
-	char search[64];
-	int n = snprintf(search, sizeof(search), "\"%s\":", subkey);
 	/* 先定位 "payload" */
-	const char *p = strstr(s, "\"payload\":");
+	const char *p = json_find_value(s, "payload");
 	if (!p) return false;
 	/* 在 payload 段内查找 subkey */
-	const char *q = strstr(p, search);
+	const char *q = json_find_value(p, subkey);
 	if (!q) return false;
-	q += n;
 	if (*q == '"') q++;
 	*val = atoi(q);
 	return true;
@@ -102,13 +137,11 @@ static bool json_get_payload_int(const char *s, const char *subkey, int *val)
 static bool json_get_payload_string(const char *s, const char *subkey,
 				    char *val, int val_size)
 {
-	char search[64];
-	int n = snprintf(search, sizeof(search), "\"%s\":\"", subkey);
-	const char *p = strstr(s, "\"payload\":");
+	const char *p = json_find_value(s, "payload");
 	if (!p) return false;
-	const char *q = strstr(p, search);
-	if (!q) return false;
-	q += n;
+	const char *q = json_find_value(p, subkey);
+	if (!q || *q != '"') return false;
+	q++;
 	int i;
 	for (i = 0; i < val_size - 1 && *q && *q != '"'; i++, q++) {
 		val[i] = *q;
@@ -137,7 +170,7 @@ static cmd_type_t str_to_cmd(const char *s)
 	return CMD_UNKNOWN;
 }
 
-bool json_parse(const char *json_str, int len, parsed_cmd_t *out)
+bool cmd_json_parse(const char *json_str, int len, parsed_cmd_t *out)
 {
 	if (!json_str || !out) return false;
 
@@ -164,6 +197,9 @@ bool json_parse(const char *json_str, int len, parsed_cmd_t *out)
 
 	/* 提取 payload 内部字段（按命令类型） */
 	switch (out->cmd) {
+	case CMD_HEARTBEAT:
+		json_get_payload_int(brace, "node", &out->node);
+		break;
 	case CMD_ENABLE:
 	case CMD_DISABLE:
 	case CMD_JOG_STOP:
@@ -216,15 +252,25 @@ int json_build_motor_status(char *buf, int buf_size,
 			    int status_word, int fault, int mode,
 			    bool alive, int wdg_ms)
 {
+	char current_s[16];
+	char voltage_s[16];
+	char position_s[16];
+	char torque_s[16];
+
+	format_fixed(current_s, sizeof(current_s), current, 2);
+	format_fixed(voltage_s, sizeof(voltage_s), voltage, 1);
+	format_fixed(position_s, sizeof(position_s), position, 1);
+	format_fixed(torque_s, sizeof(torque_s), torque, 2);
+
 	return snprintf(buf, buf_size,
 		"{\"cmd\":\"motor_status\",\"seq\":0,\"ts\":0,"
 		"\"payload\":{"
-		"\"current\":%.2f,\"voltage\":%.1f,"
-		"\"speed\":%d,\"position\":%.1f,\"torque\":%.2f,"
+		"\"current\":%s,\"voltage\":%s,"
+		"\"speed\":%d,\"position\":%s,\"torque\":%s,"
 		"\"status_word\":%d,\"fault\":%d,\"mode\":%d,"
 		"\"alive\":%s,\"wdg_ms\":%d"
 		"}}",
-		current, voltage, speed, position, torque,
+		current_s, voltage_s, speed, position_s, torque_s,
 		status_word, fault, mode,
 		alive ? "true" : "false", wdg_ms);
 }
