@@ -19,7 +19,7 @@ the fallback runtime until this Godot port is verified on device.
 Open this folder in Godot 4.6.3:
 
 ```text
-/Users/guoweifeng/Game Boy/godot_terminal
+/Users/guoweifeng/GameBoy/godot_terminal
 ```
 
 Run the main scene. Keyboard fallback controls are available on Mac:

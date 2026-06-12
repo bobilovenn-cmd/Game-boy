@@ -20,7 +20,7 @@ RGB30 作为手持诊断工具母机，运行 Godot 诊断界面，通过 WiFi U
 - RGB30 UI 可读性已优化（大字号、高对比度颜色）
 
 ### Mock Server - 已可运行
-- 位置: /Users/guoweifeng/Game BOY/mock_server/
+- 位置: /Users/guoweifeng/GameBoy/mock_server/
 - 启动: `./start_mock.sh` (一键：mock server + RGB30 SSH 部署 + Godot 启动)
 - Web Dashboard: http://localhost:8080 (自动刷新，电机控制 + 参数滑块)
 - UDP: 0.0.0.0:5000 (模拟 ESP32 dongle)
@@ -75,13 +75,13 @@ RGB30 作为手持诊断工具母机，运行 Godot 诊断界面，通过 WiFi U
 
 | 文件 | 路径 |
 |------|------|
-| Godot 项目 | /Users/guoweifeng/Game BOY/godot_terminal/ |
-| Mock Server | /Users/guoweifeng/Game BOY/mock_server/ |
-| Mac 端代码 | /Users/guoweifeng/Game BOY/handheld_terminal/ |
+| Godot 项目 | /Users/guoweifeng/GameBoy/godot_terminal/ |
+| Mock Server | /Users/guoweifeng/GameBoy/mock_server/ |
+| Mac 端代码 | /Users/guoweifeng/GameBoy/handheld_terminal/ |
 | 设备端 Godot | /storage/handheld_terminal_godot/ |
 | 设备端 Python | /storage/handheld_terminal/ |
-| 项目文档 | /Users/guoweifeng/Game BOY/手持诊断工具_软件开发教程.md |
+| 项目文档 | /Users/guoweifeng/GameBoy/手持诊断工具_软件开发教程.md |
 | ESP32 子机 | ~/esp32-can-dongle/ |
 | systemd 服务 | /storage/.config/system.d/diag-terminal.service |
 | 启动脚本 | /storage/handheld_terminal/start.sh |
-| Godot 部署脚本 | /Users/guoweifeng/Game BOY/godot_terminal/deploy/rgb30_start_godot.sh |
+| Godot 部署脚本 | /Users/guoweifeng/GameBoy/godot_terminal/deploy/rgb30_start_godot.sh |

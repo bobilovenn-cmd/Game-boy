@@ -42,7 +42,7 @@ Godot :5001 <──motor_status── mock :5000  (10Hz)
 
 ### 启动流程
 ```bash
-cd "/Users/guoweifeng/Game BOY/mock_server" && ./start_mock.sh
+cd "/Users/guoweifeng/GameBoy/mock_server" && ./start_mock.sh
 ```
 自动完成: mock server 启动 → RGB30 SSH 检查 → 部署 Godot 二进制 → 重启 sway → 启动 Godot
 

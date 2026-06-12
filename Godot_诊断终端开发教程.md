@@ -105,7 +105,7 @@ brew install --cask godot
 
 ```bash
 # 方法一：直接用命令行打开
-open -a "Godot" /Users/guoweifeng/Game\ Boy/godot_terminal
+open -a "Godot" /Users/guoweifeng/GameBoy/godot_terminal
 
 # 方法二：在 Godot 启动器中点击 "Import"，选择项目文件夹中的 project.godot
 ```

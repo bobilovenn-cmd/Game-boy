@@ -1,0 +1,17 @@
+# Zephyr build artifacts
+build*/
+.debug/
+.snapshots/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc
+*.swp
+*.swo
+*~

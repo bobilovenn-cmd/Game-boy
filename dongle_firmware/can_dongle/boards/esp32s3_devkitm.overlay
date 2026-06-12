@@ -1,0 +1,27 @@
+/*
+ * Device Tree Overlay for Waveshare ESP32-S3-RS485-CAN
+ *
+ * CAN pins:
+ *   RX: GPIO19
+ *   TX: GPIO20
+ *
+ * Uses ESP32-S3 internal TWAI (Two-Wire Automotive Interface)
+ * controller with external TJA1050 transceiver.
+ *
+ * IMPORTANT: The Waveshare board has a 120-ohm termination resistor
+ * that is jumper-selectable. Enable it ONLY if this dongle is at
+ * one end of the CAN bus.
+ */
+
+/ {
+	aliases {
+		can0 = &twai;
+	};
+};
+
+&twai {
+	status = "okay";
+	bus-speed = <500000>;
+	pinctrl-0 = <&twai_default>;
+	pinctrl-names = "default";
+};

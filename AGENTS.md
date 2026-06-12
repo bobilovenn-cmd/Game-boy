@@ -1,4 +1,4 @@
-# Game Boy Project Guidance
+# GameBoy Project Guidance
 
 ## Project Location
 
@@ -6,10 +6,10 @@ All source files, project documents, and memory files for this project must stay
 under:
 
 ```text
-/Users/guoweifeng/Game Boy
+/Users/guoweifeng/GameBoy
 ```
 
-Do not use `/Users/guoweifeng/Documents/Game Boy` for this project.
+Do not use `/Users/guoweifeng/Documents/GameBoy` for this project.
 
 ## Project Context
 

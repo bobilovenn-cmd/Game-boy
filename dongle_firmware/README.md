@@ -1,115 +1,198 @@
-# ESP32 CAN Dongle Development Guide
+# ESP32 CAN Dongle 固件开发说明
 
-This directory is reserved for the real ESP32 CAN dongle firmware.
+这个文件夹用于保存真实 ESP32 CAN Dongle 的固件源码。
 
-Project role:
-
-- RGB30 runs the Godot diagnostic UI.
-- ESP32-S3 dongle listens on UDP port 5000.
-- RGB30 listens on UDP port 5001.
-- Messages are UTF-8 JSON.
-- The dongle converts UI commands to CAN/CANopen traffic and reports motor state back to RGB30.
-
-## Current Target
-
-Build the first real dongle in two steps.
-
-Phase 0: UDP + CAN raw gateway
-
-- Start Wi-Fi AP `CAN_Dongle_01`.
-- Use dongle IP `192.168.4.1`.
-- Listen for JSON commands on UDP `5000`.
-- Remember the latest RGB30 address from any incoming packet.
-- Reply to `heartbeat`, `enable`, `disable`, `estop`, `jog_start`, `jog_stop`, `sdo_read`, `sdo_write`, and OTA commands with the same JSON shape used by `mock_server/mock_dongle.py`.
-- Initialize CAN at `500000`.
-- Receive all CAN frames and forward readable CAN log rows to RGB30.
-- Periodically send `motor_status` so the Monitor page has live data.
-
-Phase 1: CANopen motor control
-
-- Convert `enable`, `disable`, `jog_start`, and `jog_stop` into CiA 402 SDO/PDO writes.
-- Implement expedited SDO read/write for object dictionary entries shown on the Config page.
-- Decode status word, current, voltage, speed, position, torque, fault, mode, and heartbeat into `motor_status`.
-- Keep the 500 ms heartbeat watchdog. If RGB30 stops sending heartbeat, send NMT stop / safe stop.
-
-Phase 2: motor firmware flashing
-
-- Receive firmware from RGB30 via `ota_start` and `ota_chunk`.
-- Verify MD5 on `ota_verify`.
-- On `ota_flash`, transfer the file to the selected motor node using the motor vendor's bootloader protocol.
-
-## Existing Protocol Contract
-
-The source of truth is:
-
-- `/Users/guoweifeng/Game Boy/godot_terminal/scripts/protocol.gd`
-- `/Users/guoweifeng/Game Boy/godot_terminal/API接口文档.md`
-- `/Users/guoweifeng/Game Boy/mock_server/mock_dongle.py`
-
-Required UDP settings:
+你的整个系统可以理解成三层：
 
 ```text
-Dongle UDP: 192.168.4.1:5000
-RGB30 UDP: 0.0.0.0:5001
-Heartbeat: 150 ms from RGB30
-CAN bitrate: 500000
-JSON encoding: UTF-8
+RGB30 掌机 Godot UI
+        |
+        | Wi-Fi + UDP JSON
+        v
+ESP32-S3 CAN Dongle
+        |
+        | CAN / CANopen
+        v
+电机驱动器
 ```
 
-Development/mock setting currently used by Godot:
+## 这个 Dongle 要做什么
+
+RGB30 现在已经有 Godot UI。之前我们用 `mock_server/mock_dongle.py` 在 Mac 上模拟电机数据，所以 UI 里能看到电流、电压、转速、CAN 日志等内容。
+
+真实 dongle 的目标就是把这个 mock server 替换成真实硬件：
+
+- RGB30 向 dongle 发送 UDP JSON 命令。
+- dongle 接收命令。
+- dongle 把命令转换成 CAN/CANopen 报文。
+- dongle 从 CAN 总线接收真实电机数据。
+- dongle 把电机状态和 CAN 日志发回 RGB30。
+
+## 当前建议开发顺序
+
+不要一开始就做完整 CANopen 和电机固件烧录。第一版先做最小可运行版本。
+
+### Phase 0：UDP + CAN 原始网关
+
+这一阶段的目标是先验证“RGB30 能和真实 dongle 通信，dongle 能看到 CAN 总线”。
+
+需要实现：
+
+- ESP32-S3 启动 Wi-Fi 热点 `CAN_Dongle_01`。
+- dongle IP 使用 `192.168.4.1`。
+- dongle 监听 UDP `5000` 端口。
+- RGB30 监听 UDP `5001` 端口。
+- 收到 RGB30 的 `heartbeat` 后回复 `ack`。
+- 收到 RGB30 的控制命令后回复 `ack`。
+- 初始化 CAN，波特率 `500000`。
+- 接收 CAN 总线所有原始帧。
+- 把 CAN 原始帧转成 Godot CAN 日志界面能显示的文本。
+- 周期性发送 `motor_status`，让 Monitor 页面有数据。
+
+### Phase 1：CANopen 电机控制
+
+这一阶段开始真正控制电机。
+
+需要实现：
+
+- `enable` 转成 CiA 402 使能流程。
+- `disable` 转成失能流程。
+- `jog_start` 转成点动运行。
+- `jog_stop` 转成停止点动。
+- `sdo_read` 读取对象字典。
+- `sdo_write` 写入对象字典。
+- 从 CANopen 报文解析真实电流、电压、速度、位置、力矩、状态字、故障码。
+- 500 ms 没收到 RGB30 心跳时，dongle 自动安全停止电机。
+
+### Phase 2：电机固件升级
+
+这一阶段实现后期你想要的“通过 RGB30 给电机烧固件”。
+
+需要实现：
+
+- RGB30 通过 `ota_start` 和 `ota_chunk` 把固件发给 dongle。
+- dongle 校验 MD5。
+- RGB30 发送 `ota_flash`。
+- dongle 根据电机厂商的 bootloader 协议，把固件刷到指定节点的电机。
+
+## 现有协议来源
+
+真实 dongle 必须兼容现在 Godot UI 已经在使用的协议。
+
+最重要的文件是：
 
 ```text
-godot_terminal/scripts/settings.gd
-DONGLE_IP = "192.168.31.128"
+/Users/guoweifeng/GameBoy/godot_terminal/scripts/protocol.gd
+/Users/guoweifeng/GameBoy/godot_terminal/API接口文档.md
+/Users/guoweifeng/GameBoy/mock_server/mock_dongle.py
 ```
 
-For the real dongle, change it back to:
+其中 `mock_server/mock_dongle.py` 最重要，因为它就是“假 dongle”。真实 dongle 第一版要尽量模仿它的输入输出。
+
+## 通信参数
+
+真实 dongle 默认参数：
+
+```text
+Dongle IP:       192.168.4.1
+Dongle UDP:      5000
+RGB30 UDP:       5001
+心跳间隔:         150 ms
+心跳超时保护:      500 ms
+CAN 波特率:       500000
+数据格式:         UTF-8 JSON
+```
+
+当前 Godot 开发阶段为了连接 Mac mock server，可能还是：
+
+```gdscript
+const DONGLE_IP = "192.168.31.128"
+```
+
+等真实 dongle 开始测试时，需要改回：
 
 ```gdscript
 const DONGLE_IP = "192.168.4.1"
 ```
 
-## Hardware Assumption
+位置：
 
-Current project memory says the planned board is:
+```text
+/Users/guoweifeng/GameBoy/godot_terminal/scripts/settings.gd
+```
+
+## 当前硬件假设
+
+项目记忆里记录的计划硬件是：
 
 ```text
 Waveshare ESP32-S3-RS485-CAN
 CAN RX: GPIO19
 CAN TX: GPIO20
-CAN transceiver: TJA1050
-Termination: enable 120 ohm only if this dongle is at one end of the CAN bus
-Power: 7-36 V DC or USB-C 5 V
+CAN 收发器: TJA1050
+CAN 终端电阻: 只有在总线末端才打开 120 欧姆
+供电: 7-36V DC 或 USB-C 5V
 ```
 
-If the board changes, keep the UDP protocol unchanged and only change the Zephyr board/overlay.
+如果以后换开发板，不应该改 Godot UI 协议，只需要改 dongle 的 Zephyr 板级配置和 CAN 引脚。
 
-## Build Environment
+## Mac 上已有环境
 
-A Zephyr workspace already exists on this Mac:
+你的 Mac 上已经有 Zephyr 环境：
 
 ```text
 /Users/guoweifeng/esp32-can-dongle
 /Users/guoweifeng/zephyrproject/.venv/bin/west
 ```
 
-The existing build cache is currently from Zephyr `hello_world`, not the dongle app, so the dongle firmware should be created as a new app directory instead of modifying Zephyr samples.
+但是目前 `/Users/guoweifeng/esp32-can-dongle` 主要是 Zephyr 工作区，不是你的项目源码目录。
 
-Suggested app location:
+dongle 源码应该保存在你的项目里：
 
 ```text
-/Users/guoweifeng/Game Boy/dongle_firmware/can_dongle
+/Users/guoweifeng/GameBoy/dongle_firmware/can_dongle
 ```
 
-Suggested build command:
+## 建议源码结构
+
+```text
+dongle_firmware/
+├── README.md
+├── 零基础操作教程.md
+└── can_dongle/
+    ├── CMakeLists.txt
+    ├── prj.conf
+    ├── boards/
+    │   └── esp32s3_devkitm.overlay
+    └── src/
+        ├── main.c
+        ├── udp_comm.c
+        ├── udp_comm.h
+        ├── can_raw.c
+        ├── can_raw.h
+        ├── json_protocol.c
+        ├── json_protocol.h
+        ├── watchdog.c
+        ├── watchdog.h
+        ├── canopen_bridge.c
+        ├── canopen_bridge.h
+        ├── ota_manager.c
+        └── ota_manager.h
+```
+
+## 编译命令
+
+以后源码写好后，在 Mac 终端执行：
 
 ```sh
 cd /Users/guoweifeng/esp32-can-dongle
 source /Users/guoweifeng/zephyrproject/.venv/bin/activate
-west build -b esp32s3_devkitm /Users/guoweifeng/Game\ Boy/dongle_firmware/can_dongle -d build-can-dongle
+west build -b esp32s3_devkitm /Users/guoweifeng/GameBoy/dongle_firmware/can_dongle -d build-can-dongle
 ```
 
-Suggested flash command after plugging in the ESP32-S3:
+## 烧录命令
+
+ESP32-S3 通过 USB 接到 Mac 后，在终端执行：
 
 ```sh
 cd /Users/guoweifeng/esp32-can-dongle
@@ -117,35 +200,30 @@ source /Users/guoweifeng/zephyrproject/.venv/bin/activate
 west flash -d build-can-dongle
 ```
 
-## First Verification Checklist
+## 首次测试清单
 
-1. RGB30 connects to `CAN_Dongle_01`.
-2. RGB30 can ping `192.168.4.1`.
-3. Godot `UDP` status is green.
-4. Godot `LINK` status becomes green after receiving `motor_status`.
-5. CAN page shows raw frames, for example:
+第一版 dongle 做好后，要按这个顺序测试：
 
-```text
-0x0010: c0a8 1f7d 1388 1389 00a3 e915 7b22 636d
-```
+1. ESP32-S3 上电。
+2. Mac 或 RGB30 能看到 Wi-Fi：`CAN_Dongle_01`。
+3. RGB30 连接这个 Wi-Fi。
+4. RGB30 能 ping 通 `192.168.4.1`。
+5. Godot UI 右上角 `UDP` 变绿。
+6. Godot UI 右上角 `LINK` 变绿。
+7. Monitor 页面能看到电流、电压、速度等数据。
+8. CAN 页面能看到真实 CAN 帧。
+9. 选择节点 1，只控制节点 1。
+10. 选择节点 2，只控制节点 2。
+11. 拔掉或关闭 RGB30 通信，500 ms 后 dongle 自动安全停止电机。
 
-6. Selecting a node from 1-127 only affects that node's commands.
-7. If RGB30 stops sending heartbeat for more than 500 ms, dongle sends a safe stop.
+## 安全规则
 
-## Implementation Order
+这些规则后期必须一直保留：
 
-1. `main.c`: initialize Wi-Fi, UDP, CAN, watchdog, and status timer.
-2. `udp_comm.c`: bind UDP 5000, receive JSON, store RGB30 address, send JSON replies.
-3. `json_protocol.c`: parse commands and format `ack`, `motor_status`, `sdo_read_result`, `ota_status`, and CAN log packets.
-4. `can_raw.c`: initialize TWAI/CAN, send/receive raw frames, format readable frames for the CAN log page.
-5. `canopen_bridge.c`: implement expedited SDO read/write and CiA 402 control helpers.
-6. `ota_manager.c`: receive firmware, verify MD5, later flash to the motor.
-
-## Safety Rules
-
-- `estop` must not depend on normal UI state.
-- Heartbeat timeout must stop the motor even if UDP parsing or OTA is busy.
-- OTA must not run motor control writes at the same time unless explicitly allowed.
-- Node IDs outside `1..127` must be rejected.
-- Unknown commands must return an `ack` with `status="error"` instead of doing nothing silently.
+- `estop` 必须最高优先级。
+- 心跳超时必须自动停止电机。
+- OTA 时不能同时乱发电机控制命令。
+- 节点 ID 只能是 `1..127`。
+- 超出范围的节点 ID 必须拦截。
+- 未知命令必须返回错误，不能静默忽略。
 

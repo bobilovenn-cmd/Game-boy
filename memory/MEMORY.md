@@ -1,2 +1,3 @@
 - [RGB30 母机部署](project_rgb30_host.md) — ROCKNIX + SDL2 诊断界面，按键映射已验证，D-pad 导航正常，开机自启动已配置
-- [记忆同步](feedback_sync_memory.md) — 更新记忆时同步复制到 Game Boy/memory/ 目录
+- [记忆同步](feedback_sync_memory.md) — 更新记忆时同步复制到 GameBoy/memory/ 目录
+- [Dongle Phase 0](project_dongle_phase0.md) — ESP32 CAN Dongle Phase 0 固件源码已创建，12个模块文件就绪，待 west build 编译测试
