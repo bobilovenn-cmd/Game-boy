@@ -45,6 +45,15 @@ int co_read_status_word(uint8_t node);
 /** Read actual velocity (0x606C). Returns value or negative error. */
 int co_read_actual_velocity(uint8_t node);
 
+/** Read actual current. Returns raw value or negative error. */
+int co_read_actual_current(uint8_t node);
+
+/** Read DC link voltage. Returns raw value or negative error. */
+int co_read_dc_link_voltage(uint8_t node);
+
+/** Read actual torque. Returns raw value or negative error. */
+int co_read_actual_torque(uint8_t node);
+
 /** Generic SDO write: download 32-bit value to any object dictionary entry. Returns 0 or negative error. */
 int co_sdo_write(uint8_t node, uint16_t index, uint8_t sub, uint32_t value, uint8_t size);
 

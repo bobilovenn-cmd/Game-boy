@@ -28,6 +28,9 @@ LOG_MODULE_REGISTER(canopen_basic, LOG_LEVEL_INF);
 #define OD_PROFILE_DECELERATION  0x6084
 #define OD_ACTUAL_VELOCITY       0x606C
 #define OD_ACTUAL_POSITION       0x6064
+#define OD_CURRENT_ACTUAL        0x3001
+#define OD_DC_LINK_VOLTAGE       0x6079
+#define OD_TORQUE_ACTUAL         0x6077
 
 /* ---- CiA 402 control word bits ---- */
 #define CW_DISABLE_VOLTAGE       0x0000
@@ -479,6 +482,21 @@ int co_read_status_word(uint8_t node)
 int co_read_actual_velocity(uint8_t node)
 {
 	return co_sdo_read(node, OD_ACTUAL_VELOCITY, 0);
+}
+
+int co_read_actual_current(uint8_t node)
+{
+	return co_sdo_read(node, OD_CURRENT_ACTUAL, 0);
+}
+
+int co_read_dc_link_voltage(uint8_t node)
+{
+	return co_sdo_read(node, OD_DC_LINK_VOLTAGE, 0);
+}
+
+int co_read_actual_torque(uint8_t node)
+{
+	return co_sdo_read(node, OD_TORQUE_ACTUAL, 0);
 }
 
 int co_read_actual_position(uint8_t node)

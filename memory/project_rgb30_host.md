@@ -11,45 +11,60 @@ RGB30 作为手持诊断工具母机，运行 Godot 诊断界面，通过 WiFi U
 
 **Why:** 用户正在开发 AGV/AMR 电机诊断调试工具，需要一个便携式手持终端。
 
-## 当前状态（2026-06-11）
+## 当前状态（2026-06-15）
 
-### Godot 终端 - 已可运行
-- Godot 4.6.3 ARM64 通过 Wayland + gl_compatibility 运行
-- 停止 Python SDL2 服务 → 重启 sway → 启动 Godot
-- Vulkan Mobile 不可靠（swapchain 创建失败），使用 gl_compatibility
-- RGB30 UI 可读性已优化（大字号、高对比度颜色）
+### 通信架构（STA 模式）
+ESP32 和 RGB30 都连接同一 Wi-Fi 路由器，通过 UDP 通信：
 
-### Mock Server - 已可运行
+| 设备 | IP | UDP 端口 |
+|------|-----|---------|
+| ESP32 CAN Dongle | 192.168.31.126 | 5000 |
+| RGB30 母机 | 192.168.31.125 | 5001 |
+| Mac (开发) | 192.168.31.128 | - |
+
+- Wi-Fi: `HC_PRODUCTS_TEST_ANT`, Gateway `192.168.31.1`
+- ESP32 Wi-Fi 配置: `wifi_secrets.h`（git-ignored，需手动创建）
+- 心跳: 150ms, 格式: JSON over UDP
+
+### 数据流
+- ESP32 通过 CANopen SDO 从电机读取数据，封装为 JSON motor_status，UDP 发给 RGB30
+- RGB30 只负责显示，不做解算
+
+### 编译与烧录
+```bash
+cd ~/zephyrproject && source .venv/bin/activate
+west build -b esp32s3_devkitc/esp32s3/procpu \
+  ~/GameBoy/dongle_firmware/can_dongle \
+  -d ~/esp32-can-dongle/build-can-dongle \
+  -- -DZEPHYR_TOOLCHAIN_VARIANT=zephyr \
+     -DDTC_OVERLAY_FILE=~/GameBoy/dongle_firmware/can_dongle/boards/esp32s3_devkitc.overlay
+west flash -d ~/esp32-can-dongle/build-can-dongle
+```
+
+### Godot 终端
+- Godot 4.6.3 ARM64, Wayland + gl_compatibility
+- Vulkan Mobile 不可靠，使用 gl_compatibility
+
+### Mock Server（开发调试）
 - 位置: /Users/guoweifeng/GameBoy/mock_server/
-- 启动: `./start_mock.sh` (一键：mock server + RGB30 SSH 部署 + Godot 启动)
-- Web Dashboard: http://localhost:8080 (自动刷新，电机控制 + 参数滑块)
-- UDP: 0.0.0.0:5000 (模拟 ESP32 dongle)
-- 命令: enable/disable/estop/jog_cw/jog_ccw/jog_stop/sdo_read/sdo_write/ota
-- motor_status: 10Hz 推送，含电流/电压/转速/位置/扭矩/状态字
-
-### 通信参数
-- DONGLE_IP = 192.168.31.128 (Mac IP，开发调试用)
-- 实际 ESP32 子机 AP: CAN_Dongle_01, 192.168.4.1:5000
-- 母机监听: 5001
-- 心跳: 150ms
-- 格式: JSON over UDP
+- Web Dashboard: http://localhost:8080
+- UDP: 0.0.0.0:5000
 
 ### 已修复的 Bug
-- 2026-06-11: motor_status 从未发送 — udp_loop 中 update_motor() 消耗时间间隔后第二个 if 永远为 false，合并为一个代码块修复
-- 2026-06-11: DONGLE_IP 指向 192.168.4.1 → 改为 Mac IP 192.168.31.128 开发用
-- 2026-06-11: Web dashboard JS 自动刷新为空壳 — 改为 500ms AJAX 轮询更新 DOM
+- 2026-06-11: motor_status 从未发送
+- 2026-06-11: DONGLE_IP 配置错误
+- 2026-06-11: Web dashboard 自动刷新为空壳
 
 ### 排障记录
 - LINK 绿色 = 收到 motor_status (1.5s 超时变红)
 - UDP 绿色 = 本机 5001 端口绑定成功
-- 5000 = ESP32/mock 端口，5001 = Godot 监听端口，8080 = Web Dashboard
-- start_mock.sh exit code 1 是 sway 重启导致 SSH 断开，不影响功能
+- 5000 = ESP32/mock 端口, 5001 = Godot 监听端口, 8080 = Web Dashboard
 
-### ESP32 硬件（计划）
+### ESP32 硬件
 - 模块: Waveshare ESP32-S3-RS485-CAN
-- CAN: GPIO19(RX)/GPIO20(TX), TJA1050 收发器
+- CAN 引脚: **GPIO15 (TX), GPIO16 (RX)** + 内部上拉 (esp32s3_devkitc.overlay)
 - RS485: SP3485 收发器
-- 终端电阻: 120Ω 跳线帽使能，仅总线两端使用
+- 终端电阻: 120Ω 跳线帽使能
 - 供电: 7-36V DC 或 USB Type-C 5V
 
 ## 按键映射（已验证）

@@ -29,6 +29,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <errno.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
@@ -45,6 +46,7 @@ LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 #define MAIN_LOOP_DELAY_MS		10
 #define MAX_CAN_FRAMES_PER_LOOP		4
 #define CAN_LOG_INTERVAL_MS		20
+#define UI_SPEED_TO_MOTOR_UNITS		100
 
 /* ---- 电机状态（从 CAN 总线实时读取） ---- */
 static struct {
@@ -57,12 +59,12 @@ static struct {
 	int fault;
 	int mode;
 	bool alive;
-} motor_state = {
-	.current = 0.0f,
-	.voltage = 24.0f,
-	.speed = 0,
-	.position = 0.0f,
-	.torque = 0.0f,
+	} motor_state = {
+		.current = 0.0f,
+		.voltage = 0.0f,
+		.speed = 0,
+		.position = 0.0f,
+		.torque = 0.0f,
 	.status_word = 0x0040,   /* Switch On Disabled */
 	.fault = 0,
 	.mode = 3,               /* Profile Velocity */
@@ -73,11 +75,13 @@ static struct {
 static bool motor_enabled = false;
 static bool profile_configured = false;
 #define DEFAULT_NODE 2
+static uint8_t active_node = DEFAULT_NODE;
 
 /* ---- 前向声明 ---- */
 static void handle_command(const parsed_cmd_t *cmd);
 static void send_motor_status(void);
 static void process_can_frames(void);
+static bool is_sdo_error(int value);
 
 /* ---- 入口 ---- */
 int main(void)
@@ -165,6 +169,10 @@ static void handle_command(const parsed_cmd_t *cmd)
 	int ack_len;
 	const char *client_ip = udp_client_ip();
 
+	if (cmd->node >= 1 && cmd->node <= 127) {
+		active_node = (uint8_t)cmd->node;
+	}
+
 	/* estop 不受安全状态限制 — 始终可以执行 */
 	if (cmd->cmd == CMD_ESTOP) {
 		LOG_WRN("ESTOP received from %s", client_ip);
@@ -207,9 +215,10 @@ static void handle_command(const parsed_cmd_t *cmd)
 	switch (cmd->cmd) {
 	case CMD_ENABLE:
 		LOG_INF("ENABLE node=%d from %s", cmd->node, client_ip);
-		if (co_basic_enable((uint8_t)cmd->node) == 0) {
-			motor_enabled = true;
-			motor_state.fault = 0;
+			if (co_basic_enable((uint8_t)cmd->node) == 0) {
+				motor_enabled = true;
+				motor_state.alive = true;
+				motor_state.fault = 0;
 			/* 从 CAN 读取真实状态字 */
 			int sw = co_read_status_word((uint8_t)cmd->node);
 			if (sw >= 0) {
@@ -238,26 +247,27 @@ static void handle_command(const parsed_cmd_t *cmd)
 		udp_send(ack_buf, ack_len);
 		break;
 
-	case CMD_JOG_START:
-		LOG_INF("JOG_START node=%d dir=%s speed=%d from %s",
-			cmd->node, cmd->direction, cmd->speed, client_ip);
-		int target_rpm = (cmd->direction[0] == 'c' &&
-				  cmd->direction[1] == 'c') ?
-				 -cmd->speed : cmd->speed;
-		if (motor_enabled) {
-			if (!profile_configured) {
-				/* 首次 jog 前补配置运动参数 */
-				if (co_init_profile((uint8_t)cmd->node) == 0) {
-					profile_configured = true;
+		case CMD_JOG_START:
+			LOG_INF("JOG_START node=%d dir=%s speed=%d from %s",
+				cmd->node, cmd->direction, cmd->speed, client_ip);
+			int target_rpm = (cmd->direction[0] == 'c' &&
+					  cmd->direction[1] == 'c') ?
+					 -cmd->speed : cmd->speed;
+			int target_motor_speed = target_rpm * UI_SPEED_TO_MOTOR_UNITS;
+			if (motor_enabled) {
+				if (!profile_configured) {
+					/* 首次 jog 前补配置运动参数 */
+					if (co_init_profile((uint8_t)cmd->node) == 0) {
+						profile_configured = true;
 				}
+				}
+				co_basic_jog((uint8_t)cmd->node, target_rpm);
+				motor_state.speed = target_motor_speed;
 			}
-			co_basic_jog((uint8_t)cmd->node, target_rpm);
-			motor_state.speed = target_rpm;
-		}
-		ack_len = json_build_ack(ack_buf, sizeof(ack_buf), cmd->seq,
-					 "ok", "jog started", cmd->node);
-		udp_send(ack_buf, ack_len);
-		break;
+			ack_len = json_build_ack(ack_buf, sizeof(ack_buf), cmd->seq,
+						 "ok", "jog started", cmd->node);
+			udp_send(ack_buf, ack_len);
+			break;
 
 	case CMD_JOG_STOP:
 		LOG_INF("JOG_STOP node=%d from %s", cmd->node, client_ip);
@@ -306,15 +316,15 @@ static void handle_command(const parsed_cmd_t *cmd)
 				if (ret == 0) {
 					ack_len = json_build_ack(ack_buf, sizeof(ack_buf),
 								 cmd->seq, "ok",
-							 "sdo write ok", cmd->node);
-			} else {
-				ack_len = json_build_ack(ack_buf, sizeof(ack_buf),
-							 cmd->seq, "error",
-							 "sdo write failed", cmd->node);
+								 "sdo write ok", cmd->node);
+				} else {
+					ack_len = json_build_ack(ack_buf, sizeof(ack_buf),
+								 cmd->seq, "error",
+								 "sdo write failed", cmd->node);
+				}
 			}
-		}
-		udp_send(ack_buf, ack_len);
-		break;
+			udp_send(ack_buf, ack_len);
+			break;
 
 	case CMD_OTA_START:
 		LOG_INF("OTA_START size=%d md5=%s", cmd->ota_size, cmd->md5);
@@ -368,19 +378,50 @@ static void send_motor_status(void)
 
 	/* 从 CAN 读取真实电机数据 */
 	if (motor_state.alive) {
-		int vel = co_read_actual_velocity(DEFAULT_NODE);
-		if (vel >= -1000000 && vel <= 1000000) {
-			motor_state.speed = vel;
-		}
-		/* 每 5 次读一次状态字（减少 CAN 负载） */
-		static int status_read_cnt = 0;
-		if (++status_read_cnt >= 5) {
-			status_read_cnt = 0;
-			int sw = co_read_status_word(DEFAULT_NODE);
-			if (sw >= 0) {
-				motor_state.status_word = sw;
+		/* Poll one SDO object per status frame. This keeps the UI moving while
+		 * avoiding long bursts of SDO traffic on every 100 ms status packet.
+		 */
+		static int poll_slot = 0;
+		int val;
+		switch (poll_slot) {
+		case 0:
+			val = co_read_actual_velocity(active_node);
+			if (!is_sdo_error(val) && val >= -1000000 && val <= 1000000) {
+				motor_state.speed = val;
 			}
+			break;
+		case 1:
+			val = co_read_actual_position(active_node);
+			if (!is_sdo_error(val) && val > -1000000000 && val < 1000000000) {
+				motor_state.position = (float)val;
+			}
+			break;
+		case 2:
+			val = co_read_actual_current(active_node);
+			if (val >= 0) {
+				motor_state.current = (float)val / 1000.0f;
+			}
+			break;
+		case 3:
+			val = co_read_dc_link_voltage(active_node);
+			if (val >= 0) {
+				motor_state.voltage = (float)val / 1000.0f;
+			}
+			break;
+		case 4:
+			val = co_read_actual_torque(active_node);
+			if (!is_sdo_error(val) && val >= -1000000 && val <= 1000000) {
+				motor_state.torque = (float)val / 1000.0f;
+			}
+			break;
+		case 5:
+			val = co_read_status_word(active_node);
+			if (val >= 0) {
+				motor_state.status_word = val;
+			}
+			break;
 		}
+		poll_slot = (poll_slot + 1) % 6;
 	}
 
 	/* 更新看门狗剩余时间 */
@@ -399,6 +440,11 @@ static void send_motor_status(void)
 		wdg_remaining);
 
 	udp_send(buf, len);
+}
+
+static bool is_sdo_error(int value)
+{
+	return value == -EIO || value == -ETIMEDOUT || value == -EINVAL;
 }
 
 /* ---- CAN 帧处理 ---- */
@@ -423,6 +469,9 @@ static void process_can_frames(void)
 		char frame_str[128];
 		can_frame_to_string(&frame, frame_str, sizeof(frame_str));
 		LOG_DBG("CAN: %s", frame_str);
+		if (frame.id == (0x700 + active_node) && frame.dlc >= 1) {
+			motor_state.alive = true;
+		}
 		processed++;
 	}
 }
