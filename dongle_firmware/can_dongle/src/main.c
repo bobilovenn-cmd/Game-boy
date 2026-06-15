@@ -109,55 +109,13 @@ int main(void)
 	if (ret < 0) {
 		LOG_WRN("CAN init failed: %d. "
 			"Dongle will run without CAN. "
-			"Check wiring: RX=GPIO19, TX=GPIO20.", ret);
+			"Check wiring: RX=GPIO16, TX=GPIO15.", ret);
 	} else {
-		/* 4. 扫描 CAN 总线找到电机 */
-		k_msleep(500);
+		/* Keep startup non-invasive. The RGB30 selects the node later; do not
+		 * probe/reset the CAN bus here, because an unpowered motor would push
+		 * the ESP32 TWAI controller into Error-Passive before the UI is ready.
+		 */
 		can_diag();
-
-		/* 先发送 NMT 复位唤醒电机 (0x82 = reset node, 0x81 = reset communication) */
-		LOG_INF("Sending NMT reset to node 2...");
-		{
-			can_frame_t nrst;
-			memset(&nrst, 0, sizeof(nrst));
-			nrst.id = 0x000;
-			nrst.dlc = 2;
-			nrst.data[0] = 0x82; /* NMT reset node */
-			nrst.data[1] = 2;
-			can_raw_send(&nrst);
-		}
-		k_msleep(1000);
-		can_diag();
-
-		LOG_INF("Scanning CAN bus for motor (node 1-8)...");
-		int found_node = -1;
-		for (int n = 1; n <= 8; n++) {
-			LOG_INF("  Trying node %d...", n);
-			int dev = co_sdo_read((uint8_t)n, 0x1000, 0);
-			if (dev >= 0) {
-				LOG_INF("  Node %d responds! Device type = 0x%08X", n, dev);
-				found_node = n;
-				break;
-			}
-		}
-		if (found_node < 0) {
-			LOG_WRN("No motor found on CAN bus (scanned node 1-8)");
-		}
-		/* 扫描后再读一次错误计数器，看 TX errors 是否增加 */
-		can_diag();
-
-		LOG_INF("Waiting for motor node %d to become operational...",
-			DEFAULT_NODE);
-		if (co_wait_operational(DEFAULT_NODE, 5000) == 0) {
-			motor_state.alive = true;
-			if (co_init_profile(DEFAULT_NODE) == 0) {
-				profile_configured = true;
-				LOG_INF("Motor profile configured successfully");
-			}
-		} else {
-			LOG_WRN("Motor node %d not reachable. "
-				"Motor control will not work.", DEFAULT_NODE);
-		}
 	}
 
 	LOG_INF("Dongle ready. Waiting for RGB30 heartbeat...");
@@ -329,18 +287,25 @@ static void handle_command(const parsed_cmd_t *cmd)
 		break;
 	}
 
-	case CMD_SDO_WRITE:
-		LOG_INF("SDO_WRITE node=%d idx=0x%04X sub=%d data=%d from %s",
-			cmd->node, cmd->index, cmd->sub, cmd->data, client_ip);
-		/* 真实写入 CAN 总线 */
-		{
-			int ret = co_sdo_write((uint8_t)cmd->node,
-					       (uint16_t)cmd->index,
-					       (uint8_t)cmd->sub,
-					       (uint32_t)cmd->data, 4);
-			if (ret == 0) {
-				ack_len = json_build_ack(ack_buf, sizeof(ack_buf),
-							 cmd->seq, "ok",
+		case CMD_SDO_WRITE:
+			LOG_INF("SDO_WRITE node=%d idx=0x%04X sub=%d data=%d from %s",
+				cmd->node, cmd->index, cmd->sub, cmd->data, client_ip);
+			/* 真实写入 CAN 总线 */
+			{
+				uint8_t size = 4;
+				if (cmd->index == 0x6060) {
+					size = 1;
+				} else if (cmd->index == 0x6040 || cmd->index == 0x6041 ||
+					   cmd->index == 0x603F) {
+					size = 2;
+				}
+				int ret = co_sdo_write((uint8_t)cmd->node,
+						       (uint16_t)cmd->index,
+						       (uint8_t)cmd->sub,
+						       (uint32_t)cmd->data, size);
+				if (ret == 0) {
+					ack_len = json_build_ack(ack_buf, sizeof(ack_buf),
+								 cmd->seq, "ok",
 							 "sdo write ok", cmd->node);
 			} else {
 				ack_len = json_build_ack(ack_buf, sizeof(ack_buf),

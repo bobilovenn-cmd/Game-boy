@@ -4,7 +4,7 @@
  * 使用 Zephyr CAN 驱动。硬件假设:
  *   - ESP32-S3 内部 TWAI 控制器
  *   - 外部 TJA1050 收发器
- *   - RX: GPIO19, TX: GPIO20 (在 overlay 中定义)
+ *   - RX: GPIO16, TX: GPIO15 (在 overlay 中定义)
  */
 
 #include "can_raw.h"
@@ -49,6 +49,43 @@ static void log_can_state(const char *where)
 
 	LOG_WRN("%s: CAN state=%d tx_err=%u rx_err=%u",
 		where, state, err_cnt.tx_err_cnt, err_cnt.rx_err_cnt);
+}
+
+static int can_restart_if_needed(const char *where)
+{
+	enum can_state state;
+	struct can_bus_err_cnt err_cnt;
+	int ret;
+
+	if (!can_dev) {
+		return -ENODEV;
+	}
+
+	ret = can_get_state(can_dev, &state, &err_cnt);
+	if (ret < 0) {
+		return ret;
+	}
+
+	if (state != CAN_STATE_ERROR_PASSIVE &&
+	    state != CAN_STATE_BUS_OFF &&
+	    state != CAN_STATE_STOPPED) {
+		return 0;
+	}
+
+	LOG_WRN("%s: restarting CAN controller state=%d tx_err=%u rx_err=%u",
+		where, state, err_cnt.tx_err_cnt, err_cnt.rx_err_cnt);
+
+	(void)can_stop(can_dev);
+	k_msleep(20);
+	ret = can_start(can_dev);
+	if (ret < 0) {
+		LOG_ERR("%s: CAN restart failed: %d", where, ret);
+		return ret;
+	}
+
+	k_msleep(20);
+	log_can_state("after restart");
+	return 0;
 }
 
 /* 公开诊断函数：打印 CAN 控制器状态和错误计数 */
@@ -183,6 +220,8 @@ int can_raw_send(const can_frame_t *frame)
 	if (frame->ext) z_frame.flags |= CAN_FRAME_IDE;
 	if (frame->rtr) z_frame.flags |= CAN_FRAME_RTR;
 
+	(void)can_restart_if_needed("before tx");
+
 	while (k_sem_take(&tx_done_sem, K_NO_WAIT) == 0) {
 		/* Drain stale completion signals before submitting a new frame. */
 	}
@@ -192,6 +231,7 @@ int can_raw_send(const can_frame_t *frame)
 	if (ret < 0) {
 		LOG_WRN("CAN TX submit failed id=0x%X ret=%d", frame->id, ret);
 		log_can_state("tx submit failed");
+		(void)can_restart_if_needed("after tx submit failed");
 		return ret;
 	}
 
@@ -199,6 +239,7 @@ int can_raw_send(const can_frame_t *frame)
 	if (ret < 0) {
 		LOG_WRN("CAN TX timeout/no ACK id=0x%X", frame->id);
 		log_can_state("tx timeout");
+		(void)can_restart_if_needed("after tx timeout");
 		return -ETIMEDOUT;
 	}
 
@@ -206,6 +247,7 @@ int can_raw_send(const can_frame_t *frame)
 		LOG_WRN("CAN TX done error id=0x%X err=%d",
 			frame->id, tx_done_error);
 		log_can_state("tx done error");
+		(void)can_restart_if_needed("after tx done error");
 		return tx_done_error;
 	}
 

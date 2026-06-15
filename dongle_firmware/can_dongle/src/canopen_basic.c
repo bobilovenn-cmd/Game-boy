@@ -311,16 +311,26 @@ int co_basic_enable(uint8_t node)
 
 	LOG_INF("=== CANopen enable node=%u ===", node);
 
-	/* Step 0: Ensure NMT operational */
-	ret = co_wait_operational(node, NMT_START_TIMEOUT_MS);
+	/* Step 0: Best-effort NMT start. The previous Python control script does
+	 * not make heartbeat mandatory before the CiA 402 control-word sequence;
+	 * some drives respond to SDO but do not emit heartbeat in the expected
+	 * window. Keep enable responsive and let the SDO writes prove the link.
+	 */
+	ret = co_nmt_start(node);
 	if (ret < 0) {
-		LOG_ERR("Node %u not operational, trying NMT start...", node);
-		co_nmt_start(node);
-		ret = co_wait_operational(node, NMT_START_TIMEOUT_MS);
-		if (ret < 0) {
-			return ret;
-		}
+		LOG_WRN("NMT start failed node=%u ret=%d, trying SDO sequence anyway",
+			node, ret);
 	}
+	k_msleep(100);
+
+	/* Select Profile Velocity before enabling. 0x6060 is an int8 object, so
+	 * writing it as a 32-bit value is rejected by some drives.
+	 */
+	ret = co_sdo_write(node, OD_MODE_OPERATION, 0, MODE_PROFILE_VELOCITY, 1);
+	if (ret < 0) {
+		LOG_WRN("Set operation mode failed node=%u ret=%d, continuing", node, ret);
+	}
+	k_msleep(50);
 
 	/* Step 1: Fault reset (belt-and-suspenders) */
 	co_sdo_write(node, OD_CONTROL_WORD, 0, CW_FAULT_RESET, 2);
