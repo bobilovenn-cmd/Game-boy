@@ -9,6 +9,8 @@
 #include "canopen_basic.h"
 #include "can_raw.h"
 #include "watchdog.h"
+#include "json_protocol.h"
+#include "udp_comm.h"
 
 #include <string.h>
 #include <errno.h>
@@ -72,12 +74,15 @@ static int can_wait_frame(uint32_t cob_id, can_frame_t *out, int timeout_ms)
 
 	while (k_uptime_get() < deadline) {
 		int ret = can_recv(out);
-		if (ret == 1 && out->id == cob_id) {
-			return 1;
+		if (ret == 1) {
+			char log_buf[128];
+			int log_len = json_build_can_log(log_buf, sizeof(log_buf),
+							 out->id, out->data, out->dlc);
+			udp_send(log_buf, log_len);
+			if (out->id == cob_id) {
+				return 1;
+			}
 		}
-		/* N.B.: frames that don't match the COB-ID are silently dropped.
-		 * In a production system we'd re-queue them, but for the
-		 * single-motor dongle this is fine. */
 		wdg_feed();
 		k_msleep(5);
 	}
@@ -190,7 +195,7 @@ int co_sdo_read(uint8_t node, uint16_t index, uint8_t sub)
 		return ret;
 	}
 
-	/* Ignore non-matching frames until we get the response */
+	/* Collect response, log every frame */
 	can_frame_t resp;
 	int64_t deadline = k_uptime_get() + SDO_RESPONSE_TIMEOUT_MS;
 	while (k_uptime_get() < deadline) {
@@ -200,6 +205,11 @@ int co_sdo_read(uint8_t node, uint16_t index, uint8_t sub)
 			k_msleep(5);
 			continue;
 		}
+		/* Log every CAN frame received here */
+		char rlog_buf[128];
+		int rlog_len = json_build_can_log(rlog_buf, sizeof(rlog_buf),
+						  resp.id, resp.data, resp.dlc);
+		udp_send(rlog_buf, rlog_len);
 		if (resp.id != sdo_rx_id) {
 			continue;
 		}

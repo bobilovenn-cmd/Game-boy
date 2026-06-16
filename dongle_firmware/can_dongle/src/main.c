@@ -499,13 +499,9 @@ static void process_can_frames(void)
 	static int64_t last_can_log_time = 0;
 
 	while (processed < MAX_CAN_FRAMES_PER_LOOP && can_recv(&frame) == 1) {
-		int64_t now = k_uptime_get();
-		if ((now - last_can_log_time) >= CAN_LOG_INTERVAL_MS) {
-			int len = json_build_can_log(log_buf, sizeof(log_buf),
-						     frame.id, frame.data, frame.dlc);
-			udp_send(log_buf, len);
-			last_can_log_time = now;
-		}
+		int len = json_build_can_log(log_buf, sizeof(log_buf),
+					     frame.id, frame.data, frame.dlc);
+		udp_send(log_buf, len);
 
 		/* 控制台日志 */
 		char frame_str[128];

@@ -835,7 +835,10 @@ func _record_can_row(raw: String, data: Dictionary) -> void:
 		payload = data["payload"]
 	if cmd == "ack" and str(payload.get("msg", "")) == "alive":
 		return
-	var line = "%s  %s  %s" % [Time.get_time_string_from_system(), _packet_node_label(payload), _packet_summary(cmd, payload, raw)]
+	if cmd == "motor_status":
+		return
+	var summary = _packet_summary(cmd, payload, raw)
+	var line = "%s  %s" % [Time.get_time_string_from_system(), summary]
 	can_rx_count += 1
 	can_last_line = line
 	can_rows.append({"line": line, "raw": raw})
@@ -853,16 +856,11 @@ func _packet_node_label(payload: Dictionary) -> String:
 func _packet_summary(cmd: String, payload: Dictionary, raw: String) -> String:
 	var can_id = str(payload.get("can_id", payload.get("id", "")))
 	var dlc = str(payload.get("dlc", ""))
-	var bytes = str(payload.get("data", payload.get("bytes", "")))
-	if can_id != "" or bytes != "":
-		var text = cmd
-		if can_id != "":
-			text += " ID " + can_id
-		if dlc != "":
-			text += " DLC " + dlc
-		if bytes != "":
-			text += " " + bytes
-		return text
+	var data_bytes = str(payload.get("data", payload.get("bytes", "")))
+	if can_id != "" or data_bytes != "":
+		var id_str = can_id if can_id != "" else "---"
+		var dlc_str = dlc if dlc != "" else str(len(data_bytes) / 3 if data_bytes != "" else "0")
+		return "%s  [%s]  %s" % [id_str, dlc_str, data_bytes]
 	match cmd:
 		"motor_status":
 			return "STATUS I=%sA V=%sV RPM=%s POS=%s T=%s" % [
@@ -1204,7 +1202,7 @@ func _draw_can_page() -> void:
 	var visible_count = _filtered_can_rows().size()
 	_draw_text("RX %d/%d" % [visible_count, can_rows.size()], 580, 158, C_ACCENT, 13)
 	var last_line = can_last_line if can_last_line != "" else "WAIT UDP PACKETS"
-	_draw_text(last_line.substr(0, 64), 36, 224, C_TEXT, 12)
+	_draw_text(last_line, 36, 224, C_TEXT, 12, HORIZONTAL_ALIGNMENT_LEFT, 680)
 
 	_draw_action_rail(Rect2(18, 268, 188, 226), _can_action_labels(), int(selected[3]))
 	_draw_panel(Rect2(224, 268, 478, 372), C_PANEL, C_LINE)
@@ -1220,7 +1218,7 @@ func _draw_can_page() -> void:
 		var row_rect = Rect2(240, y - 2, 444, 28)
 		draw_rect(row_rect, C_INPUT, true)
 		draw_rect(row_rect, C_LINE, false, 1.0)
-		_draw_text(str(row.get("line", "")).substr(0, 72), 250, y + 5, C_TEXT, 11)
+		_draw_text(str(row.get("line", "")), 250, y + 5, C_TEXT, 11, HORIZONTAL_ALIGNMENT_LEFT, 420)
 		y += 34
 
 
@@ -1381,10 +1379,14 @@ func _draw_action_rail(rect: Rect2, items: Array, selected_index: int) -> void:
 func _draw_telemetry_grid(rect: Rect2) -> void:
 	_draw_panel(rect, C_PANEL, C_LINE)
 	_draw_text(_t("telemetry"), rect.position.x + 18, rect.position.y + 18, C_DIM, 14)
+	var speed_str = str(motor.speed)
+	if speed_str == "" or speed_str == "0":
+		speed_str = "---"
+	speed_str += " rpm"
 	var cards = [
 		[_t("metric_current"), "%.2f" % motor.current, "A", C_ACCENT],
 		[_t("metric_voltage"), "%.1f" % motor.voltage, "V", C_ACCENT_2],
-		[_t("metric_speed"), "%d" % motor.speed, "rpm", C_WARN],
+		[_t("metric_speed"), speed_str, "", C_WARN],
 		[_t("metric_position"), "%.1f" % motor.position, "deg", C_TEXT],
 		[_t("metric_torque"), "%.2f" % motor.torque, "Nm", C_GREEN],
 		[_t("metric_status"), motor.get_status_text(), "", C_RED if motor.is_fault() else C_GREEN],
