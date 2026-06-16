@@ -28,8 +28,11 @@ int co_init_profile(uint8_t node);
 
 /* ---- Motion commands ---- */
 
-/** Jog at a given speed (positive = cw, negative = ccw, units: UI rpm). */
-int co_basic_jog(uint8_t node, int rpm);
+/** Jog at a given velocity value (positive = cw, negative = ccw, same unit as UI speed). */
+int co_basic_jog(uint8_t node, int velocity);
+
+/** Set Profile Position target and trigger motion. Position and speed use drive/UI raw units. */
+int co_move_to_position(uint8_t node, int32_t position, int speed);
 
 /** Quick-stop the motor. */
 int co_basic_stop(uint8_t node);

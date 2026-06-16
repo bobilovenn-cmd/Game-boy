@@ -25,6 +25,8 @@ typedef enum {
 	CMD_OTA_CHUNK,
 	CMD_OTA_VERIFY,
 	CMD_OTA_FLASH,
+	CMD_SET_SPEED,
+	CMD_MOVE_POSITION,
 } cmd_type_t;
 
 /* 解析后的命令结构 */
@@ -35,6 +37,7 @@ typedef struct {
 	/* jog 参数 */
 	char direction[4];   /* "cw" / "ccw" */
 	int speed;
+	int position;
 	/* SDO 参数 */
 	int index;
 	int sub;

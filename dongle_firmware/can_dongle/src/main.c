@@ -46,7 +46,6 @@ LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 #define MAIN_LOOP_DELAY_MS		10
 #define MAX_CAN_FRAMES_PER_LOOP		4
 #define CAN_LOG_INTERVAL_MS		20
-#define UI_SPEED_TO_MOTOR_UNITS		100
 #define MOTOR_COMMAND_WDG_FEEDS		6
 
 /* ---- 电机状态（从 CAN 总线实时读取） ---- */
@@ -75,6 +74,7 @@ static struct {
 /* ---- 内部状态 ---- */
 static bool motor_enabled = false;
 static bool profile_configured = false;
+static int target_speed_value = 50000;
 #define DEFAULT_NODE 2
 static uint8_t active_node = DEFAULT_NODE;
 
@@ -203,7 +203,8 @@ static void handle_command(const parsed_cmd_t *cmd)
 	/* 安全状态检查: 以下命令在安全状态下被拦截 */
 	if (wdg_is_safe() &&
 	    (cmd->cmd == CMD_ENABLE || cmd->cmd == CMD_DISABLE ||
-	     cmd->cmd == CMD_JOG_START || cmd->cmd == CMD_JOG_STOP)) {
+	     cmd->cmd == CMD_JOG_START || cmd->cmd == CMD_JOG_STOP ||
+	     cmd->cmd == CMD_MOVE_POSITION)) {
 		ack_len = json_build_ack(ack_buf, sizeof(ack_buf), cmd->seq,
 					 "error",
 					 "watchdog timeout — motor control blocked",
@@ -254,24 +255,53 @@ static void handle_command(const parsed_cmd_t *cmd)
 		case CMD_JOG_START:
 			LOG_INF("JOG_START node=%d dir=%s speed=%d from %s",
 				cmd->node, cmd->direction, cmd->speed, client_ip);
-			int target_rpm = (cmd->direction[0] == 'c' &&
+			if (cmd->speed > 0) {
+				target_speed_value = cmd->speed;
+			}
+			int target_velocity = (cmd->direction[0] == 'c' &&
 					  cmd->direction[1] == 'c') ?
-					 -cmd->speed : cmd->speed;
-			int target_motor_speed = target_rpm * UI_SPEED_TO_MOTOR_UNITS;
+					 -target_speed_value : target_speed_value;
 			if (motor_enabled) {
 				if (!profile_configured) {
-					/* 首次 jog 前补配置运动参数 */
 					if (co_init_profile((uint8_t)cmd->node) == 0) {
 						profile_configured = true;
 				}
 				}
-				co_basic_jog((uint8_t)cmd->node, target_rpm);
-				motor_state.speed = target_motor_speed;
+				co_basic_jog((uint8_t)cmd->node, target_velocity);
+				motor_state.speed = target_velocity;
 			}
 			ack_len = json_build_ack(ack_buf, sizeof(ack_buf), cmd->seq,
 						 "ok", "jog started", cmd->node);
 			udp_send(ack_buf, ack_len);
 			break;
+
+	case CMD_SET_SPEED:
+		if (cmd->speed < 1 || cmd->speed > 300000) {
+			ack_len = json_build_ack(ack_buf, sizeof(ack_buf), cmd->seq,
+						 "error", "speed range 1-300000", cmd->node);
+		} else {
+			target_speed_value = cmd->speed;
+			ack_len = json_build_ack(ack_buf, sizeof(ack_buf), cmd->seq,
+						 "ok", "speed updated", cmd->node);
+		}
+		udp_send(ack_buf, ack_len);
+		break;
+
+	case CMD_MOVE_POSITION: {
+		LOG_INF("MOVE_POSITION node=%d pos=%d speed=%d from %s",
+			cmd->node, cmd->position, cmd->speed, client_ip);
+		int move_speed = cmd->speed > 0 ? cmd->speed : target_speed_value;
+		if (co_move_to_position((uint8_t)cmd->node, (int32_t)cmd->position, move_speed) == 0) {
+			motor_state.alive = true;
+			ack_len = json_build_ack(ack_buf, sizeof(ack_buf), cmd->seq,
+						 "ok", "position move started", cmd->node);
+		} else {
+			ack_len = json_build_ack(ack_buf, sizeof(ack_buf), cmd->seq,
+						 "error", "position move failed", cmd->node);
+		}
+		udp_send(ack_buf, ack_len);
+		break;
+	}
 
 	case CMD_JOG_STOP:
 		LOG_INF("JOG_STOP node=%d from %s", cmd->node, client_ip);
@@ -402,7 +432,7 @@ static void send_motor_status(void)
 			break;
 		case 2:
 			val = co_read_actual_current(active_node);
-			if (val >= 0) {
+			if (!is_sdo_error(val) && val >= -1000000 && val <= 1000000) {
 				motor_state.current = (float)val / 1000.0f;
 			}
 			break;

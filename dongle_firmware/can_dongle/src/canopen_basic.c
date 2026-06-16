@@ -45,6 +45,7 @@ LOG_MODULE_REGISTER(canopen_basic, LOG_LEVEL_INF);
 
 /* ---- CiA 402 mode codes ---- */
 #define MODE_PROFILE_VELOCITY    3
+#define MODE_PROFILE_POSITION    1
 
 /* ---- Timing (ms) ---- */
 #define SDO_RESPONSE_TIMEOUT_MS  500
@@ -55,9 +56,6 @@ LOG_MODULE_REGISTER(canopen_basic, LOG_LEVEL_INF);
 #define DEFAULT_PROFILE_VELOCITY      100000
 #define DEFAULT_PROFILE_ACCELERATION  100000
 #define DEFAULT_PROFILE_DECELERATION  100000
-
-/* ---- Conversion: UI rpm → motor pulse/s (adjust to match encoder) ---- */
-#define UI_RPM_TO_PULSE_PER_SEC      100
 
 /* ---- NMT states in heartbeat ---- */
 #define NMT_STATE_OPERATIONAL  0x05
@@ -468,21 +466,59 @@ int co_init_profile(uint8_t node)
 
 /* ---- Jog / motion (velocity mode) ---- */
 
-int co_basic_jog(uint8_t node, int rpm)
+int co_basic_jog(uint8_t node, int velocity)
 {
-	/* rpm > 0 = cw, rpm < 0 = ccw */
-	int velocity = rpm * UI_RPM_TO_PULSE_PER_SEC;
+	LOG_INF("Jog node=%u velocity=%d", node, velocity);
 
-	LOG_INF("Jog node=%u rpm=%d → velocity=%d pulse/s", node, rpm, velocity);
-
-	/* In velocity mode, just write target velocity — motor spins continuously.
-	 * Hold button → velocity stays, release → stop sends 0 velocity. */
 	int ret = co_sdo_write(node, OD_TARGET_VELOCITY, 0,
 			       (uint32_t)(int32_t)velocity, 4);
 	if (ret < 0) {
 		LOG_ERR("Jog velocity write failed node=%u ret=%d", node, ret);
 	}
 	return ret;
+}
+
+int co_move_to_position(uint8_t node, int32_t position, int speed)
+{
+	int ret;
+	int profile_velocity = speed;
+	if (profile_velocity < 0) {
+		profile_velocity = -profile_velocity;
+	}
+	if (profile_velocity == 0) {
+		profile_velocity = DEFAULT_PROFILE_VELOCITY;
+	}
+
+	LOG_INF("Move position node=%u pos=%d speed=%d profile_vel=%d",
+		node, position, speed, profile_velocity);
+
+	co_nmt_start(node);
+	k_msleep(50);
+
+	ret = co_sdo_write(node, OD_MODE_OPERATION, 0, MODE_PROFILE_POSITION, 1);
+	if (ret < 0) { return ret; }
+	k_msleep(50);
+
+	ret = co_sdo_write(node, OD_PROFILE_VELOCITY, 0, (uint32_t)profile_velocity, 4);
+	if (ret < 0) { return ret; }
+	k_msleep(20);
+
+	ret = co_sdo_write(node, OD_TARGET_POSITION, 0, (uint32_t)position, 4);
+	if (ret < 0) { return ret; }
+	k_msleep(20);
+
+	ret = co_sdo_write(node, OD_CONTROL_WORD, 0, CW_SHUTDOWN, 2);
+	if (ret < 0) { return ret; }
+	k_msleep(20);
+	ret = co_sdo_write(node, OD_CONTROL_WORD, 0, CW_SWITCH_ON, 2);
+	if (ret < 0) { return ret; }
+	k_msleep(20);
+	ret = co_sdo_write(node, OD_CONTROL_WORD, 0, CW_ENABLE_OPERATION, 2);
+	if (ret < 0) { return ret; }
+	k_msleep(20);
+	ret = co_sdo_write(node, OD_CONTROL_WORD, 0, CW_CHANGE_IMM, 2);
+	if (ret < 0) { return ret; }
+	return 0;
 }
 
 int co_basic_stop(uint8_t node)

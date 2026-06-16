@@ -36,7 +36,7 @@ const C_BLACK = Color8(0, 0, 0)          # 黑色
 ## UI配置常量
 const LANGUAGE_OPTIONS = [UiText.LANG_ZH, UiText.LANG_EN]  # 支持的语言列表
 const TAB_KEYS = ["tab_monitor", "tab_config", "tab_ota", "tab_can"]   # 页面标签
-const MONITOR_ITEM_KEYS = ["cmd_enable", "cmd_disable", "cmd_estop", "cmd_jog_cw", "cmd_jog_ccw"]  # 监控页命令列表
+const MONITOR_ITEM_KEYS = ["cmd_enable", "cmd_disable", "cmd_estop", "cmd_jog_cw", "cmd_jog_ccw", "cmd_position_mode", "cmd_speed_set"]  # 监控页命令列表
 
 ## 配置页参数列表 - [显示名, CANopen索引, 子索引, 单位描述]
 ## 索引对应CiA 402协议的对象字典
@@ -66,6 +66,13 @@ const KEYBOARD_ROWS = [
 	["A", "S", "D", "F", "G", "H", "J", "K", "L"],
 	["Z", "X", "C", "V", "B", "N", "M"],
 	["SHIFT", "-", "_", ":", ".", "SP", "DEL", "CLR", "OK"],
+]
+const NUMERIC_KEY_ROWS = [
+	["1", "2", "3"],
+	["4", "5", "6"],
+	["7", "8", "9"],
+	["-", "0", "DEL"],
+	["BACK", "CLR", "OK"],
 ]
 
 ## RGB30手柄按键映射 - 直接读取/dev/input/js0的原始按键ID
@@ -121,6 +128,7 @@ var selected_node_id = AppSettings.DEFAULT_NODE_ID  # 当前控制节点
 var node_input = ""                         # 节点输入框内容
 var node_key_row = 0                        # 节点数字键盘选中行
 var node_key_col = 0                        # 节点数字键盘选中列
+var node_error_msg = ""                     # 节点输入错误提示
 
 ## 页面导航状态
 var current_tab = 0                         # 当前页面(0=监控, 1=配置, 2=OTA, 3=CAN日志)
@@ -168,6 +176,12 @@ var keyboard_open = false                   # 是否显示虚拟键盘
 var keyboard_row = 0                        # 虚拟键盘选中行
 var keyboard_col = 0                        # 虚拟键盘选中列
 var keyboard_lowercase = false              # 虚拟键盘是否小写输入
+var numeric_input_open = false              # 运动参数数字输入页
+var numeric_input_kind = ""                 # position/speed
+var numeric_input_value = ""                # 输入值
+var numeric_key_row = 0
+var numeric_key_col = 0
+var target_speed_value = 50000              # 正转/反转使用的速度
 
 ## 手柄输入状态 - 使用独立线程读取/dev/input/js0
 var raw_thread: Thread                      # 输入读取线程
@@ -269,6 +283,10 @@ func _draw() -> void:
 		return
 	if keyboard_open:
 		_draw_filter_input_page() # CAN过滤字段独立输入界面
+		_draw_status_overlay()
+		return
+	if numeric_input_open:
+		_draw_numeric_input_page()
 		_draw_status_overlay()
 		return
 
@@ -427,6 +445,9 @@ func _handle_action(action: String) -> void:
 	if keyboard_open:
 		_handle_keyboard_action(action)
 		return
+	if numeric_input_open:
+		_handle_numeric_input_action(action)
+		return
 
 	match action:
 		"menu":
@@ -460,9 +481,9 @@ func _handle_action(action: String) -> void:
 		"estop":
 			_send(Protocol.estop(), "E-STOP sent", "error")
 		"jog_cw":
-			_send(Protocol.jog_start(selected_node_id, "cw", 500), "Jog CW")
+			_send(Protocol.jog_start(selected_node_id, "cw", target_speed_value), "Jog CW %d" % target_speed_value)
 		"jog_ccw":
-			_send(Protocol.jog_start(selected_node_id, "ccw", 500), "Jog CCW")
+			_send(Protocol.jog_start(selected_node_id, "ccw", target_speed_value), "Jog CCW %d" % target_speed_value)
 		"jog_stop":
 			_send(Protocol.jog_stop(selected_node_id), "Jog stopped")
 		"r2":
@@ -490,6 +511,7 @@ func _handle_language_action(action: String) -> void:
 				language_selected = true
 				node_selected = false
 				node_input = ""
+				node_error_msg = ""
 				node_key_row = 0
 				node_key_col = 0
 				ui_lang = LANGUAGE_OPTIONS[selected_language]
@@ -521,20 +543,22 @@ func _apply_node_key(key: String) -> void:
 		"DEL":
 			if node_input.length() > 0:
 				node_input = node_input.substr(0, node_input.length() - 1)
+			node_error_msg = ""
 		"OK":
 			_confirm_node_input()
 		_:
 			if node_input.length() < 3:
 				node_input += key
+			node_error_msg = ""
 
 
 func _confirm_node_input() -> void:
 	if node_input == "" or not node_input.is_valid_int():
-		_set_status(_t("node_error_empty"), "warn")
+		node_error_msg = _t("node_error_empty")
 		return
 	var value = int(node_input)
 	if value < 1 or value > 127:
-		_set_status(_t("node_error_range"), "error")
+		node_error_msg = _t("node_error_range")
 		return
 	selected_node_id = value
 	node_selected = true
@@ -543,6 +567,7 @@ func _confirm_node_input() -> void:
 	motor = MotorDataScript.new()
 	last_rx_msec = 0
 	result_msg = ""
+	node_error_msg = ""
 	can_rows.clear()
 	_set_status(_t("node_selected_status") % selected_node_id)
 
@@ -553,6 +578,7 @@ func _return_to_language_select() -> void:
 	language_selected = false
 	node_selected = false
 	node_input = ""
+	node_error_msg = ""
 	status_msg = ""
 	status_until_msec = 0
 
@@ -567,9 +593,13 @@ func _confirm_current_selection() -> void:
 			2:
 				_send(Protocol.estop(), "E-STOP sent", "error")
 			3:
-				_send(Protocol.jog_start(selected_node_id, "cw", 500), "Jog CW")
+				_send(Protocol.jog_start(selected_node_id, "cw", target_speed_value), "Jog CW %d" % target_speed_value)
 			4:
-				_send(Protocol.jog_start(selected_node_id, "ccw", 500), "Jog CCW")
+				_send(Protocol.jog_start(selected_node_id, "ccw", target_speed_value), "Jog CCW %d" % target_speed_value)
+			5:
+				_open_numeric_input("position")
+			6:
+				_open_numeric_input("speed")
 	elif current_tab == 1:
 		var item: Array = CONFIG_ITEMS[int(selected[1])]
 		var name_key: String = item[0]
@@ -675,6 +705,73 @@ func _apply_upload_service_output(line: String) -> void:
 			"url":
 				if value != "":
 					upload_url = value
+
+
+func _open_numeric_input(kind: String) -> void:
+	numeric_input_open = true
+	numeric_input_kind = kind
+	numeric_input_value = str(target_speed_value) if kind == "speed" else ""
+	numeric_key_row = 0
+	numeric_key_col = 0
+
+
+func _handle_numeric_input_action(action: String) -> void:
+	match action:
+		"up":
+			numeric_key_row = max(0, numeric_key_row - 1)
+			numeric_key_col = min(numeric_key_col, NUMERIC_KEY_ROWS[numeric_key_row].size() - 1)
+		"down":
+			numeric_key_row = min(NUMERIC_KEY_ROWS.size() - 1, numeric_key_row + 1)
+			numeric_key_col = min(numeric_key_col, NUMERIC_KEY_ROWS[numeric_key_row].size() - 1)
+		"left":
+			numeric_key_col = max(0, numeric_key_col - 1)
+		"right":
+			numeric_key_col = min(NUMERIC_KEY_ROWS[numeric_key_row].size() - 1, numeric_key_col + 1)
+		"confirm":
+			_apply_numeric_key(str(NUMERIC_KEY_ROWS[numeric_key_row][numeric_key_col]))
+		"back":
+			numeric_input_open = false
+		"language_select":
+			numeric_input_open = false
+			_return_to_language_select()
+
+
+func _apply_numeric_key(key: String) -> void:
+	match key:
+		"BACK":
+			numeric_input_open = false
+		"DEL":
+			if numeric_input_value.length() > 0:
+				numeric_input_value = numeric_input_value.substr(0, numeric_input_value.length() - 1)
+		"CLR":
+			numeric_input_value = ""
+		"OK":
+			_confirm_numeric_input()
+		"-":
+			if numeric_input_kind == "position":
+				if numeric_input_value.begins_with("-"):
+					numeric_input_value = numeric_input_value.substr(1)
+				elif numeric_input_value == "":
+					numeric_input_value = "-"
+		_:
+			if numeric_input_value.length() < 10:
+				numeric_input_value += key
+
+
+func _confirm_numeric_input() -> void:
+	if numeric_input_value == "" or numeric_input_value == "-" or not numeric_input_value.is_valid_int():
+		_set_status(_t("motion_input_empty"), "warn")
+		return
+	var value = int(numeric_input_value)
+	if numeric_input_kind == "speed":
+		if value < 1 or value > 300000:
+			_set_status(_t("motion_speed_range"), "error")
+			return
+		target_speed_value = value
+		_send(Protocol.set_speed(selected_node_id, target_speed_value), _t("motion_speed_sent") % target_speed_value)
+	else:
+		_send(Protocol.move_position(selected_node_id, value, target_speed_value), _t("motion_position_sent"))
+	numeric_input_open = false
 
 
 func _handle_keyboard_action(action: String) -> void:
@@ -1003,6 +1100,11 @@ func _draw_node_select() -> void:
 
 	_draw_panel(Rect2(78, 626, 564, 42), C_INPUT, C_LINE)
 	_draw_text(_t("node_hint"), 78, 637, C_DIM, 12, HORIZONTAL_ALIGNMENT_CENTER, 564)
+	if node_error_msg != "":
+		var err_rect = Rect2(178, 678, 364, 30)
+		draw_rect(err_rect, Color(C_RED, 0.15), true)
+		draw_rect(err_rect, C_RED, false, 1.0)
+		_draw_text(node_error_msg, err_rect.position.x, err_rect.position.y + 7, C_RED, 13, HORIZONTAL_ALIGNMENT_CENTER, err_rect.size.x)
 
 
 func _draw_header() -> void:
@@ -1164,6 +1266,49 @@ func _upload_mode_display() -> String:
 	return upload_network_mode.to_upper()
 
 
+func _draw_numeric_input_page() -> void:
+	draw_rect(Rect2(Vector2.ZERO, get_viewport_rect().size), C_BG, true)
+	var rect = Rect2(78, 58, 564, 548)
+	draw_rect(rect, C_BG_2, true)
+	draw_rect(rect, C_ACCENT, false, 2.0)
+	draw_line(rect.position, rect.position + Vector2(28, 0), C_ACCENT, 3.0)
+	draw_line(rect.position, rect.position + Vector2(0, 28), C_ACCENT, 3.0)
+	var title_key = "motion_speed_title" if numeric_input_kind == "speed" else "motion_position_title"
+	var hint_key = "motion_speed_hint" if numeric_input_kind == "speed" else "motion_position_hint"
+	_draw_text(_t(title_key), rect.position.x + 30, rect.position.y + 34, C_TEXT, 24)
+	_draw_text(_t(hint_key), rect.position.x + 30, rect.position.y + 78, C_DIM, 14)
+	var input_rect = Rect2(rect.position.x + 72, rect.position.y + 126, rect.size.x - 144, 58)
+	draw_rect(input_rect, C_INPUT, true)
+	draw_rect(input_rect, C_LINE, false, 1.0)
+	var value_text = numeric_input_value if numeric_input_value != "" else "--"
+	_draw_text(value_text, input_rect.position.x, input_rect.position.y + 15, C_ACCENT if numeric_input_value != "" else C_DIM_2, 22, HORIZONTAL_ALIGNMENT_CENTER, input_rect.size.x)
+	if numeric_input_kind == "speed":
+		_draw_text("speed", input_rect.end.x - 66, input_rect.position.y + 20, C_DIM, 12)
+	var key_w = 106.0
+	var key_h = 42.0
+	var gap = 12.0
+	var y = rect.position.y + 226
+	for row_index in NUMERIC_KEY_ROWS.size():
+		var row: Array = NUMERIC_KEY_ROWS[row_index]
+		var row_w = float(row.size()) * key_w + float(row.size() - 1) * gap
+		var x = 360.0 - row_w * 0.5
+		for col_index in row.size():
+			var r = Rect2(x + col_index * (key_w + gap), y, key_w, key_h)
+			draw_rect(r, C_INPUT, true)
+			draw_rect(r, C_LINE, false, 1.0)
+			_draw_text(str(row[col_index]), r.position.x, r.position.y + 11, C_TEXT, 14, HORIZONTAL_ALIGNMENT_CENTER, r.size.x)
+		y += key_h + gap
+	var selected_row: Array = NUMERIC_KEY_ROWS[numeric_key_row]
+	var selected_row_w = float(selected_row.size()) * key_w + float(selected_row.size() - 1) * gap
+	var selected_x = 360.0 - selected_row_w * 0.5 + numeric_key_col * (key_w + gap)
+	var selected_y = rect.position.y + 226 + numeric_key_row * (key_h + gap)
+	var selected_rect = Rect2(selected_x, selected_y, key_w, key_h)
+	var selected_key = str(NUMERIC_KEY_ROWS[numeric_key_row][numeric_key_col])
+	var selected_color = C_WARN if selected_key == "BACK" else C_ACCENT
+	draw_rect(selected_rect, selected_color, false, 2.0)
+	draw_rect(Rect2(selected_rect.position.x, selected_rect.position.y, 5, selected_rect.size.y), selected_color, true)
+
+
 func _draw_filter_input_page() -> void:
 	draw_rect(Rect2(Vector2.ZERO, get_viewport_rect().size), C_BG, true)
 	var rect = Rect2(28, 72, 664, 548)
@@ -1217,16 +1362,18 @@ func _draw_filter_input_page() -> void:
 func _draw_action_rail(rect: Rect2, items: Array, selected_index: int) -> void:
 	_draw_panel(rect, C_PANEL, C_LINE)
 	_draw_text(_t("commands"), rect.position.x + 18, rect.position.y + 18, C_DIM, 14)
+	var gap = 8.0
+	var row_h = min(38.0, (rect.size.y - 58.0 - gap * float(max(items.size() - 1, 0))) / float(max(items.size(), 1)))
 	var y = rect.position.y + 48
 	for i in items.size():
 		var is_sel = i == selected_index
-		var r = Rect2(rect.position.x + 14, y, rect.size.x - 28, 38)
+		var r = Rect2(rect.position.x + 14, y, rect.size.x - 28, row_h)
 		draw_rect(r, C_INPUT, true)
 		draw_rect(r, C_LINE, false, 1.0)
-		_draw_text(items[i], r.position.x, r.position.y + 10, C_TEXT, 15, HORIZONTAL_ALIGNMENT_CENTER, r.size.x)
-		y += 46
+		_draw_text(items[i], r.position.x, r.position.y + max(7, int((row_h - 18) * 0.5)), C_TEXT, 14, HORIZONTAL_ALIGNMENT_CENTER, r.size.x)
+		y += row_h + gap
 	if selected_index >= 0 and selected_index < items.size():
-		var selected_rect = Rect2(rect.position.x + 14, rect.position.y + 48 + selected_index * 46, rect.size.x - 28, 38)
+		var selected_rect = Rect2(rect.position.x + 14, rect.position.y + 48 + selected_index * (row_h + gap), rect.size.x - 28, row_h)
 		draw_rect(selected_rect, C_ACCENT, false, 2.0)
 		draw_rect(Rect2(selected_rect.position.x, selected_rect.position.y, 5, selected_rect.size.y), C_ACCENT, true)
 

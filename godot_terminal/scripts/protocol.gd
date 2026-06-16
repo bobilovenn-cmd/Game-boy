@@ -69,6 +69,21 @@ static func jog_stop(node: int) -> String:
 	return _build("jog_stop", {"node": node})
 
 
+static func set_speed(node: int, speed: int) -> String:
+	return _build("set_speed", {
+		"node": node,
+		"speed": speed,
+	})
+
+
+static func move_position(node: int, position: int, speed: int) -> String:
+	return _build("move_position", {
+		"node": node,
+		"position": position,
+		"speed": speed,
+	})
+
+
 static func ota_start(size: int, md5: String) -> String:
 	return _build("ota_start", {
 		"size": size,

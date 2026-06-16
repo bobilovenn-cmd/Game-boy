@@ -167,6 +167,8 @@ static cmd_type_t str_to_cmd(const char *s)
 	if (strcmp(s, "ota_chunk") == 0)  return CMD_OTA_CHUNK;
 	if (strcmp(s, "ota_verify") == 0) return CMD_OTA_VERIFY;
 	if (strcmp(s, "ota_flash") == 0)  return CMD_OTA_FLASH;
+	if (strcmp(s, "set_speed") == 0)  return CMD_SET_SPEED;
+	if (strcmp(s, "move_position") == 0) return CMD_MOVE_POSITION;
 	return CMD_UNKNOWN;
 }
 
@@ -205,6 +207,15 @@ bool cmd_json_parse(const char *json_str, int len, parsed_cmd_t *out)
 	case CMD_JOG_STOP:
 	case CMD_OTA_FLASH:
 		json_get_payload_int(brace, "node", &out->node);
+		break;
+	case CMD_SET_SPEED:
+		json_get_payload_int(brace, "node", &out->node);
+		json_get_payload_int(brace, "speed", &out->speed);
+		break;
+	case CMD_MOVE_POSITION:
+		json_get_payload_int(brace, "node", &out->node);
+		json_get_payload_int(brace, "position", &out->position);
+		json_get_payload_int(brace, "speed", &out->speed);
 		break;
 	case CMD_JOG_START:
 		json_get_payload_int(brace, "node", &out->node);
