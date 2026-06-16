@@ -1379,14 +1379,10 @@ func _draw_action_rail(rect: Rect2, items: Array, selected_index: int) -> void:
 func _draw_telemetry_grid(rect: Rect2) -> void:
 	_draw_panel(rect, C_PANEL, C_LINE)
 	_draw_text(_t("telemetry"), rect.position.x + 18, rect.position.y + 18, C_DIM, 14)
-	var speed_str = str(motor.speed)
-	if speed_str == "" or speed_str == "0":
-		speed_str = "---"
-	speed_str += " rpm"
 	var cards = [
 		[_t("metric_current"), "%.2f" % motor.current, "A", C_ACCENT],
 		[_t("metric_voltage"), "%.1f" % motor.voltage, "V", C_ACCENT_2],
-		[_t("metric_speed"), speed_str, "", C_WARN],
+		[_t("metric_speed"), "%d" % motor.speed, "rpm", C_WARN],
 		[_t("metric_position"), "%.1f" % motor.position, "deg", C_TEXT],
 		[_t("metric_torque"), "%.2f" % motor.torque, "Nm", C_GREEN],
 		[_t("metric_status"), motor.get_status_text(), "", C_RED if motor.is_fault() else C_GREEN],
@@ -1422,7 +1418,7 @@ func _draw_waveform_panel(rect: Rect2) -> void:
 		draw_line(Vector2(gx, plot.position.y), Vector2(gx, plot.end.y), Color(C_GRID, 0.45), 1.0)
 	draw_rect(plot, C_LINE, false, 1.0)
 
-	var vals = motor.current_history
+	var vals = motor.speed_history
 	var n = min(vals.size(), 96)
 	if n < 2:
 		_draw_text(_t("waiting_packets"), plot.position.x, plot.position.y + plot.size.y * 0.5 - 8, C_DIM, 15, HORIZONTAL_ALIGNMENT_CENTER, plot.size.x)
