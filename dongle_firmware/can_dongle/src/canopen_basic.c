@@ -8,6 +8,7 @@
 
 #include "canopen_basic.h"
 #include "can_raw.h"
+#include "watchdog.h"
 
 #include <string.h>
 #include <errno.h>
@@ -79,6 +80,7 @@ static int can_wait_frame(uint32_t cob_id, can_frame_t *out, int timeout_ms)
 		/* N.B.: frames that don't match the COB-ID are silently dropped.
 		 * In a production system we'd re-queue them, but for the
 		 * single-motor dongle this is fine. */
+		wdg_feed();
 		k_msleep(5);
 	}
 	return 0; /* timeout */
@@ -196,6 +198,7 @@ int co_sdo_read(uint8_t node, uint16_t index, uint8_t sub)
 	while (k_uptime_get() < deadline) {
 		ret = can_recv(&resp);
 		if (ret != 1) {
+			wdg_feed();
 			k_msleep(5);
 			continue;
 		}
@@ -254,6 +257,19 @@ int co_nmt_start(uint8_t node)
 	return 0;
 }
 
+static int co_nmt_reset_comm(uint8_t node)
+{
+	can_frame_t frame;
+	memset(&frame, 0, sizeof(frame));
+	frame.id = 0x000;
+	frame.dlc = 2;
+	frame.data[0] = 0x82; /* NMT reset communication */
+	frame.data[1] = node;
+
+	LOG_WRN("NMT reset communication node=%u", node);
+	return can_raw_send(&frame);
+}
+
 int co_wait_operational(uint8_t node, int timeout_ms)
 {
 	uint32_t hb_id = 0x700 + node;
@@ -299,6 +315,7 @@ int co_wait_operational(uint8_t node, int timeout_ms)
 				co_nmt_start(node);
 			}
 		}
+		wdg_feed();
 		k_msleep(HEARTBEAT_POLL_MS);
 	}
 
@@ -313,6 +330,11 @@ int co_basic_enable(uint8_t node)
 	int ret;
 
 	LOG_INF("=== CANopen enable node=%u ===", node);
+
+	ret = can_force_recover("before CANopen enable");
+	if (ret < 0) {
+		LOG_WRN("CAN recovery failed node=%u ret=%d, trying anyway", node, ret);
+	}
 
 	/* Step 0: Best-effort NMT start. The previous Python control script does
 	 * not make heartbeat mandatory before the CiA 402 control-word sequence;
@@ -331,7 +353,18 @@ int co_basic_enable(uint8_t node)
 	 */
 	ret = co_sdo_write(node, OD_MODE_OPERATION, 0, MODE_PROFILE_VELOCITY, 1);
 	if (ret < 0) {
-		LOG_WRN("Set operation mode failed node=%u ret=%d, continuing", node, ret);
+		LOG_WRN("Set operation mode failed node=%u ret=%d, recovering and retrying",
+			node, ret);
+		(void)can_force_recover("retry after mode write failed");
+		(void)co_nmt_reset_comm(node);
+		k_msleep(1200);
+		(void)co_nmt_start(node);
+		k_msleep(300);
+		ret = co_sdo_write(node, OD_MODE_OPERATION, 0, MODE_PROFILE_VELOCITY, 1);
+		if (ret < 0) {
+			LOG_WRN("Set operation mode retry failed node=%u ret=%d, continuing",
+				node, ret);
+		}
 	}
 	k_msleep(50);
 

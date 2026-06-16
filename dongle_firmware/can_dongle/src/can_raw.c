@@ -88,6 +88,33 @@ static int can_restart_if_needed(const char *where)
 	return 0;
 }
 
+int can_force_recover(const char *where)
+{
+	can_frame_t dropped;
+	int ret;
+
+	if (!can_dev || !initialized) {
+		return -ENODEV;
+	}
+
+	LOG_INF("%s: forcing CAN controller recovery", where ? where : "can_force_recover");
+	(void)can_stop(can_dev);
+	k_msleep(20);
+	ret = can_start(can_dev);
+	if (ret < 0) {
+		LOG_ERR("%s: CAN recovery start failed: %d",
+			where ? where : "can_recover", ret);
+		return ret;
+	}
+
+	while (can_recv(&dropped) == 1) {
+		/* Drop stale SDO/heartbeat frames after a controller restart. */
+	}
+	k_msleep(50);
+	log_can_state("after forced recovery");
+	return 0;
+}
+
 /* 公开诊断函数：打印 CAN 控制器状态和错误计数 */
 void can_diag(void)
 {

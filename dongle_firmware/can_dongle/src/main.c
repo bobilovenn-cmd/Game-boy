@@ -47,6 +47,7 @@ LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 #define MAX_CAN_FRAMES_PER_LOOP		4
 #define CAN_LOG_INTERVAL_MS		20
 #define UI_SPEED_TO_MOTOR_UNITS		100
+#define MOTOR_COMMAND_WDG_FEEDS		6
 
 /* ---- 电机状态（从 CAN 总线实时读取） ---- */
 static struct {
@@ -82,6 +83,7 @@ static void handle_command(const parsed_cmd_t *cmd);
 static void send_motor_status(void);
 static void process_can_frames(void);
 static bool is_sdo_error(int value);
+static void keep_link_alive_during_command(void);
 
 /* ---- 入口 ---- */
 int main(void)
@@ -169,7 +171,7 @@ static void handle_command(const parsed_cmd_t *cmd)
 	int ack_len;
 	const char *client_ip = udp_client_ip();
 
-	if (cmd->node >= 1 && cmd->node <= 127) {
+	if (cmd->cmd != CMD_HEARTBEAT && cmd->node >= 1 && cmd->node <= 127) {
 		active_node = (uint8_t)cmd->node;
 	}
 
@@ -215,6 +217,7 @@ static void handle_command(const parsed_cmd_t *cmd)
 	switch (cmd->cmd) {
 	case CMD_ENABLE:
 		LOG_INF("ENABLE node=%d from %s", cmd->node, client_ip);
+		keep_link_alive_during_command();
 			if (co_basic_enable((uint8_t)cmd->node) == 0) {
 				motor_enabled = true;
 				motor_state.alive = true;
@@ -233,6 +236,7 @@ static void handle_command(const parsed_cmd_t *cmd)
 			ack_len = json_build_ack(ack_buf, sizeof(ack_buf), cmd->seq,
 						 "error", "CAN enable failed", cmd->node);
 		}
+		keep_link_alive_during_command();
 		udp_send(ack_buf, ack_len);
 		break;
 
@@ -445,6 +449,14 @@ static void send_motor_status(void)
 static bool is_sdo_error(int value)
 {
 	return value == -EIO || value == -ETIMEDOUT || value == -EINVAL;
+}
+
+static void keep_link_alive_during_command(void)
+{
+	for (int i = 0; i < MOTOR_COMMAND_WDG_FEEDS; i++) {
+		wdg_feed();
+		k_msleep(20);
+	}
 }
 
 /* ---- CAN 帧处理 ---- */

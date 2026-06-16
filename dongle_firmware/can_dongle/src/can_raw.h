@@ -54,3 +54,10 @@ int can_frame_to_string(const can_frame_t *frame, char *buf, int buf_size);
  * 用于判断 CAN 引脚是否连接正确。
  */
 void can_diag(void);
+
+/**
+ * Force a CAN controller restart and clear any queued RX frames.
+ * Useful after ESP32 reboot or a transient bus error before starting
+ * a CANopen command sequence.
+ */
+int can_force_recover(const char *where);
