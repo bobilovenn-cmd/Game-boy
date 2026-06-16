@@ -12,6 +12,7 @@ extends Control
 ## 依赖模块加载
 const AppSettings = preload("res://scripts/settings.gd")  # 全局配置
 const Protocol = preload("res://scripts/protocol.gd")      # 通信协议
+const UdpClient = preload("res://scripts/protocol/udp_client.gd")  # UDP收发
 const MotorDataScript = preload("res://scripts/motor_data.gd")  # 电机数据模型
 const CanLogState = preload("res://scripts/models/can_log_state.gd")  # CAN日志状态
 const UiText = preload("res://scripts/ui_text.gd")          # 国际化文本
@@ -50,7 +51,7 @@ const NUMERIC_KEY_ROWS = UiConfig.NUMERIC_KEY_ROWS
 
 ## 核心对象
 var font: Font                              # 当前字体
-var udp = PacketPeerUDP.new()               # UDP通信对象
+var udp_client = UdpClient.new()            # UDP通信对象
 var motor = MotorDataScript.new()           # 电机数据实例
 var can_log = CanLogState.new()             # CAN日志状态
 
@@ -139,9 +140,9 @@ func _ready() -> void:
 			font = ThemeDB.fallback_font
 
 	# 绑定本地UDP端口，设置目标地址(ESP32网关)
-	var err = udp.bind(AppSettings.LOCAL_UDP_PORT, "0.0.0.0")
+	udp_client.configure(AppSettings.LOCAL_UDP_PORT, AppSettings.DONGLE_IP, AppSettings.DONGLE_UDP_PORT)
+	var err = udp_client.bind_any()
 	if err == OK:
-		udp.set_dest_address(AppSettings.DONGLE_IP, AppSettings.DONGLE_UDP_PORT)
 		udp_ready = true
 		_set_status("UDP ready 0.0.0.0:%d -> %s:%d" % [AppSettings.LOCAL_UDP_PORT, AppSettings.DONGLE_IP, AppSettings.DONGLE_UDP_PORT])
 	else:
@@ -751,8 +752,7 @@ func _apply_keyboard_key(key: String) -> void:
 func _poll_udp() -> void:
 	if not udp_ready:
 		return
-	while udp.get_available_packet_count() > 0:
-		var raw = udp.get_packet().get_string_from_utf8()
+	for raw in udp_client.poll_text_packets():
 		var data = Protocol.parse(raw)  # 解析JSON消息
 		_record_can_row(raw, data)
 		_handle_message(data)           # 分发处理
@@ -881,8 +881,7 @@ func _send(message: String, ui_msg: String = "", kind: String = "info") -> bool:
 		if ui_msg != "":
 			_set_status("UDP not ready", "error")
 		return false
-	udp.set_dest_address(AppSettings.DONGLE_IP, AppSettings.DONGLE_UDP_PORT)
-	var err = udp.put_packet(message.to_utf8_buffer())
+	var err = udp_client.send_text(message)
 	if err == OK:
 		if ui_msg != "":
 			_set_status(ui_msg, kind)
