@@ -13,6 +13,7 @@ extends Control
 const AppSettings = preload("res://scripts/settings.gd")  # 全局配置
 const Protocol = preload("res://scripts/protocol.gd")      # 通信协议
 const MotorDataScript = preload("res://scripts/motor_data.gd")  # 电机数据模型
+const CanLogState = preload("res://scripts/models/can_log_state.gd")  # CAN日志状态
 const UiText = preload("res://scripts/ui_text.gd")          # 国际化文本
 const UiTheme = preload("res://scripts/theme/ui_theme.gd")   # UI主题色
 const UiConfig = preload("res://scripts/app/ui_config.gd")   # UI页面配置
@@ -51,6 +52,7 @@ const NUMERIC_KEY_ROWS = UiConfig.NUMERIC_KEY_ROWS
 var font: Font                              # 当前字体
 var udp = PacketPeerUDP.new()               # UDP通信对象
 var motor = MotorDataScript.new()           # 电机数据实例
+var can_log = CanLogState.new()             # CAN日志状态
 
 ## 语言选择状态
 var language_selected = false               # 是否已选择语言
@@ -101,12 +103,7 @@ var upload_password = ""                    # Wi-Fi方案不显示密码
 var upload_url = "http://RGB30_IP:8080"      # 浏览器上传地址
 var upload_status = ""                      # 上传服务状态提示
 
-## CAN日志页面状态
-var can_filter = ""                         # CAN日志过滤字段
-var can_rows: Array[Dictionary] = []         # CAN/UDP接收日志
-var can_paused = false                      # 暂停刷新
-var can_rx_count = 0                         # CAN/UDP日志接收计数
-var can_last_line = ""                       # 最后一条CAN/UDP日志摘要
+## CAN日志输入状态
 var keyboard_open = false                   # 是否显示虚拟键盘
 var keyboard_row = 0                        # 虚拟键盘选中行
 var keyboard_col = 0                        # 虚拟键盘选中列
@@ -503,7 +500,7 @@ func _confirm_node_input() -> void:
 	last_rx_msec = 0
 	result_msg = ""
 	node_error_msg = ""
-	can_rows.clear()
+	can_log.clear()
 	_set_status(_t("node_selected_status") % selected_node_id)
 
 
@@ -566,11 +563,11 @@ func _confirm_current_selection() -> void:
 				keyboard_row = 1
 				keyboard_col = 0
 			1:
-				can_rows.clear()
+				can_log.clear()
 				_set_status(_t("can_reset_status"))
 			2:
-				can_paused = not can_paused
-				_set_status(_t("can_paused") if can_paused else _t("can_run_status"))
+				can_log.paused = not can_log.paused
+				_set_status(_t("can_paused") if can_log.paused else _t("can_run_status"))
 
 
 func _open_upload_mode() -> void:
@@ -733,21 +730,21 @@ func _handle_keyboard_action(action: String) -> void:
 func _apply_keyboard_key(key: String) -> void:
 	match key:
 		"SP":
-			if can_filter.length() < 32:
-				can_filter += " "
+			if can_log.filter.length() < 32:
+				can_log.filter += " "
 		"DEL":
-			if can_filter.length() > 0:
-				can_filter = can_filter.substr(0, can_filter.length() - 1)
+			if can_log.filter.length() > 0:
+				can_log.filter = can_log.filter.substr(0, can_log.filter.length() - 1)
 		"CLR":
-			can_filter = ""
+			can_log.filter = ""
 		"OK":
 			keyboard_open = false
-			_set_status(_t("can_filter_label") + ": " + (can_filter if can_filter != "" else _t("can_all")))
+			_set_status(_t("can_filter_label") + ": " + (can_log.filter if can_log.filter != "" else _t("can_all")))
 		"SHIFT":
 			keyboard_lowercase = not keyboard_lowercase
 		_:
-			if can_filter.length() < 32:
-				can_filter += key
+			if can_log.filter.length() < 32:
+				can_log.filter += key
 
 
 ## 轮询UDP接收缓冲区 - 处理所有待处理的数据包
@@ -762,7 +759,7 @@ func _poll_udp() -> void:
 
 
 func _record_can_row(raw: String, data: Dictionary) -> void:
-	if can_paused:
+	if can_log.paused:
 		return
 	var cmd = str(data.get("cmd", "packet"))
 	var payload = data
@@ -774,11 +771,7 @@ func _record_can_row(raw: String, data: Dictionary) -> void:
 		return
 	var summary = _packet_summary(cmd, payload, raw)
 	var line = "%s  %s" % [Time.get_time_string_from_system(), summary]
-	can_rx_count += 1
-	can_last_line = line
-	can_rows.append({"line": line, "raw": raw})
-	while can_rows.size() > 80:
-		can_rows.pop_front()
+	can_log.append_line(line, raw)
 
 
 func _packet_node_label(payload: Dictionary) -> String:
@@ -1131,12 +1124,12 @@ func _draw_can_page() -> void:
 	var input_rect = Rect2(112, 188, 474, 30)
 	draw_rect(input_rect, C_INPUT, true)
 	draw_rect(input_rect, C_LINE, false, 1.0)
-	_draw_text(can_filter if can_filter != "" else _t("can_all"), input_rect.position.x + 10, input_rect.position.y + 7, C_TEXT if can_filter != "" else C_DIM_2, 12)
-	if can_paused:
+	_draw_text(can_log.filter if can_log.filter != "" else _t("can_all"), input_rect.position.x + 10, input_rect.position.y + 7, C_TEXT if can_log.filter != "" else C_DIM_2, 12)
+	if can_log.paused:
 		_draw_text(_t("can_paused"), 604, 194, C_WARN, 12)
 	var visible_count = _filtered_can_rows().size()
-	_draw_text("RX %d/%d" % [visible_count, can_rows.size()], 580, 158, C_ACCENT, 13)
-	var last_line = can_last_line if can_last_line != "" else "WAIT UDP PACKETS"
+	_draw_text("RX %d/%d" % [visible_count, can_log.rows.size()], 580, 158, C_ACCENT, 13)
+	var last_line = can_log.last_line if can_log.last_line != "" else "WAIT UDP PACKETS"
 	_draw_text(last_line, 36, 224, C_TEXT, 12, HORIZONTAL_ALIGNMENT_LEFT, 680)
 
 	_draw_action_rail(Rect2(18, 268, 188, 226), _can_action_labels(), int(selected[3]))
@@ -1256,7 +1249,7 @@ func _draw_filter_input_page() -> void:
 	draw_rect(input_rect, C_INPUT, true)
 	draw_rect(input_rect, C_LINE, false, 1.0)
 	_draw_text(_t("can_filter_label") + ":", input_rect.position.x + 16, input_rect.position.y + 15, C_TEXT, 16)
-	_draw_text(can_filter if can_filter != "" else _t("can_all"), input_rect.position.x + 104, input_rect.position.y + 15, C_TEXT if can_filter != "" else C_DIM_2, 16)
+	_draw_text(can_log.filter if can_log.filter != "" else _t("can_all"), input_rect.position.x + 104, input_rect.position.y + 15, C_TEXT if can_log.filter != "" else C_DIM_2, 16)
 
 	var key_h = 30.0
 	var gap = 6.0
@@ -1460,19 +1453,11 @@ func _texts(keys: Array) -> Array[String]:
 
 
 func _can_action_labels() -> Array[String]:
-	return [_t("can_filter"), _t("can_reset"), _t("can_run") if can_paused else _t("can_pause")]
+	return [_t("can_filter"), _t("can_reset"), _t("can_run") if can_log.paused else _t("can_pause")]
 
 
 func _filtered_can_rows() -> Array[Dictionary]:
-	if can_filter.strip_edges() == "":
-		return can_rows
-	var needle = can_filter.strip_edges().to_lower()
-	var rows: Array[Dictionary] = []
-	for row in can_rows:
-		var line = str(row.get("line", "")).to_lower()
-		if line.contains(needle):
-			rows.append(row)
-	return rows
+	return can_log.filtered_rows()
 
 
 func _keyboard_key_value(row_index: int, col_index: int) -> String:
