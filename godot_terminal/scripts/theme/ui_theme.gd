@@ -1,0 +1,18 @@
+extends RefCounted
+
+const C_BG = Color8(4, 8, 14)
+const C_BG_2 = Color8(8, 18, 28)
+const C_PANEL = Color8(13, 29, 43)
+const C_PANEL_2 = Color8(18, 42, 58)
+const C_INPUT = Color8(3, 12, 20)
+const C_LINE = Color8(42, 92, 110)
+const C_GRID = Color8(22, 58, 72)
+const C_TEXT = Color8(234, 247, 252)
+const C_DIM = Color8(178, 214, 224)
+const C_DIM_2 = Color8(145, 184, 196)
+const C_ACCENT = Color8(0, 226, 188)
+const C_ACCENT_2 = Color8(56, 158, 255)
+const C_WARN = Color8(255, 184, 77)
+const C_RED = Color8(255, 72, 92)
+const C_GREEN = Color8(75, 255, 156)
+const C_BLACK = Color8(0, 0, 0)

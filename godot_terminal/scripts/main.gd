@@ -14,103 +14,38 @@ const AppSettings = preload("res://scripts/settings.gd")  # 全局配置
 const Protocol = preload("res://scripts/protocol.gd")      # 通信协议
 const MotorDataScript = preload("res://scripts/motor_data.gd")  # 电机数据模型
 const UiText = preload("res://scripts/ui_text.gd")          # 国际化文本
+const UiTheme = preload("res://scripts/theme/ui_theme.gd")   # UI主题色
+const UiConfig = preload("res://scripts/app/ui_config.gd")   # UI页面配置
+const InputMapper = preload("res://scripts/input/input_mapper.gd")  # 按键映射
 
 ## 主题色常量 - 深色科技风格配色方案
-const C_BG = Color8(4, 8, 14)          # 背景色(深蓝黑)
-const C_BG_2 = Color8(8, 18, 28)        # 次背景色
-const C_PANEL = Color8(13, 29, 43)       # 面板背景
-const C_PANEL_2 = Color8(18, 42, 58)     # 次面板背景
-const C_INPUT = Color8(3, 12, 20)        # 输入框背景
-const C_LINE = Color8(42, 92, 110)       # 边框线
-const C_GRID = Color8(22, 58, 72)        # 网格线
-const C_TEXT = Color8(234, 247, 252)      # 主文本(亮白)
-const C_DIM = Color8(178, 214, 224)      # 次要文本(灰白)
-const C_DIM_2 = Color8(145, 184, 196)    # 更暗文本
-const C_ACCENT = Color8(0, 226, 188)     # 强调色(青绿)
-const C_ACCENT_2 = Color8(56, 158, 255)  # 次强调色(蓝)
-const C_WARN = Color8(255, 184, 77)      # 警告色(橙黄)
-const C_RED = Color8(255, 72, 92)        # 错误色(红)
-const C_GREEN = Color8(75, 255, 156)     # 成功色(绿)
-const C_BLACK = Color8(0, 0, 0)          # 黑色
+const C_BG = UiTheme.C_BG
+const C_BG_2 = UiTheme.C_BG_2
+const C_PANEL = UiTheme.C_PANEL
+const C_PANEL_2 = UiTheme.C_PANEL_2
+const C_INPUT = UiTheme.C_INPUT
+const C_LINE = UiTheme.C_LINE
+const C_GRID = UiTheme.C_GRID
+const C_TEXT = UiTheme.C_TEXT
+const C_DIM = UiTheme.C_DIM
+const C_DIM_2 = UiTheme.C_DIM_2
+const C_ACCENT = UiTheme.C_ACCENT
+const C_ACCENT_2 = UiTheme.C_ACCENT_2
+const C_WARN = UiTheme.C_WARN
+const C_RED = UiTheme.C_RED
+const C_GREEN = UiTheme.C_GREEN
+const C_BLACK = UiTheme.C_BLACK
 
 ## UI配置常量
-const LANGUAGE_OPTIONS = [UiText.LANG_ZH, UiText.LANG_EN]  # 支持的语言列表
-const TAB_KEYS = ["tab_monitor", "tab_config", "tab_ota", "tab_can"]   # 页面标签
-const MONITOR_ITEM_KEYS = ["cmd_enable", "cmd_disable", "cmd_estop", "cmd_jog_cw", "cmd_jog_ccw", "cmd_position_mode", "cmd_speed_set"]  # 监控页命令列表
-
-## 配置页参数列表 - [显示名, CANopen索引, 子索引, 单位描述]
-## 索引对应CiA 402协议的对象字典
-const CONFIG_ITEMS = [
-	["cfg_mode", 0x6060, 0, "cfg_drive_mode"],           # 驱动模式
-	["cfg_control_word", 0x6040, 0, "cfg_cia_402"],       # 控制字
-	["cfg_target_speed", 0x60FF, 0, "cfg_rpm"],           # 目标速度
-	["cfg_target_torque", 0x6071, 0, "cfg_permille"],     # 目标转矩
-	["cfg_pid_kp", 0x2010, 0, "cfg_proportional"],        # PID比例系数
-	["cfg_pid_ki", 0x2011, 0, "cfg_integral"],            # PID积分系数
-	["cfg_pid_kd", 0x2012, 0, "cfg_derivative"],          # PID微分系数
-	["cfg_current_limit", 0x2013, 0, "cfg_amps"],         # 电流限制
-	["cfg_save_eeprom", 0x1010, 1, "cfg_persist"],        # 保存到EEPROM
-]
-const OTA_ITEM_KEYS = ["ota_upload", "ota_load", "ota_send", "ota_verify", "ota_flash"]  # OTA升级步骤
-const CAN_ITEM_KEYS = ["can_filter", "can_reset", "can_pause"]  # CAN日志页操作
-const NODE_KEY_ROWS = [
-	["1", "2", "3"],
-	["4", "5", "6"],
-	["7", "8", "9"],
-	["BACK", "0", "DEL"],
-	["OK"],
-]
-const KEYBOARD_ROWS = [
-	["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"],
-	["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
-	["A", "S", "D", "F", "G", "H", "J", "K", "L"],
-	["Z", "X", "C", "V", "B", "N", "M"],
-	["SHIFT", "-", "_", ":", ".", "SP", "DEL", "CLR", "OK"],
-]
-const NUMERIC_KEY_ROWS = [
-	["1", "2", "3"],
-	["4", "5", "6"],
-	["7", "8", "9"],
-	["-", "0", "DEL"],
-	["BACK", "CLR", "OK"],
-]
-
-## RGB30手柄按键映射 - 直接读取/dev/input/js0的原始按键ID
-## 优先使用此映射，响应更直接
-const RGB30_RAW_BUTTONS = {
-	0: "back",      # 返回键
-	1: "confirm",   # 确认键(A)
-	2: "enable",    # 使能键(X)
-	3: "disable",   # 失能键(Y)
-	4: "jog_ccw",   # 逆时针点动(L1)
-	5: "jog_cw",    # 顺时针点动(R1)
-	6: "language_select",  # SELECT: 返回语言选择界面
-	7: "stick_press",  # 左轴按下(无动作)
-	8: "language_select",  # SELECT: 返回语言选择界面(备用映射)
-	9: "menu",      # 菜单/切页(START)
-	13: "up",       # 上
-	14: "down",     # 下
-	15: "left",     # 左
-	16: "right",    # 右
-}
-
-## Godot/SDL标准手柄按键映射 - 备用方案
-## 当/dev/input/js0读取失败时使用
-const GODOT_STANDARD_BUTTONS = {
-	0: "confirm",
-	1: "back",
-	2: "enable",
-	3: "disable",
-	4: "language_select",
-	6: "menu",
-	7: "stick_press",
-	9: "jog_ccw",
-	10: "jog_cw",
-	11: "up",
-	12: "down",
-	13: "left",
-	14: "right",
-}
+const LANGUAGE_OPTIONS = UiConfig.LANGUAGE_OPTIONS  # 支持的语言列表
+const TAB_KEYS = UiConfig.TAB_KEYS                  # 页面标签
+const MONITOR_ITEM_KEYS = UiConfig.MONITOR_ITEM_KEYS
+const CONFIG_ITEMS = UiConfig.CONFIG_ITEMS
+const OTA_ITEM_KEYS = UiConfig.OTA_ITEM_KEYS
+const CAN_ITEM_KEYS = UiConfig.CAN_ITEM_KEYS
+const NODE_KEY_ROWS = UiConfig.NODE_KEY_ROWS
+const KEYBOARD_ROWS = UiConfig.KEYBOARD_ROWS
+const NUMERIC_KEY_ROWS = UiConfig.NUMERIC_KEY_ROWS
 
 ## 核心对象
 var font: Font                              # 当前字体
@@ -366,7 +301,7 @@ func _drain_raw_input() -> void:
 			_handle_action("jog_stop")
 			continue
 		last_raw_button = raw
-		var action = RGB30_RAW_BUTTONS.get(raw, "")
+		var action = InputMapper.raw_action(raw)
 		last_input_label = "raw %d -> %s" % [raw, action if action != "" else "unmapped"]
 		if action != "":
 			_handle_action(action)
@@ -375,9 +310,9 @@ func _drain_raw_input() -> void:
 
 
 func _handle_godot_joy_button(button_index: int, pressed: bool) -> void:
-	if not GODOT_STANDARD_BUTTONS.has(button_index):
+	var action := InputMapper.godot_button_action(button_index)
+	if action == "":
 		return
-	var action: String = GODOT_STANDARD_BUTTONS[button_index]
 	last_input_label = "godot %d -> %s" % [button_index, action]
 	if pressed:
 		_handle_action(action)
