@@ -22,6 +22,7 @@ const UiText = preload("res://scripts/ui_text.gd")          # 国际化文本
 const UiTheme = preload("res://scripts/theme/ui_theme.gd")   # UI主题色
 const UiConfig = preload("res://scripts/app/ui_config.gd")   # UI页面配置
 const InputMapper = preload("res://scripts/input/input_mapper.gd")  # 按键映射
+const RawInputReader = preload("res://scripts/input/raw_input_reader.gd")  # RGB30原始输入读取
 
 ## 主题色常量 - 深色科技风格配色方案
 const C_BG = UiTheme.C_BG
@@ -60,6 +61,7 @@ var motor_controller = MotorController.new() # 电机命令控制器
 var can_log = CanLogState.new()             # CAN日志状态
 var ota = OtaState.new()                    # OTA升级状态
 var status = StatusState.new()              # 状态提示
+var raw_input = RawInputReader.new()        # /dev/input/js0读取器
 
 ## 语言选择状态
 var language_selected = false               # 是否已选择语言
@@ -104,15 +106,9 @@ var numeric_input_value = ""                # 输入值
 var numeric_key_row = 0
 var numeric_key_col = 0
 
-## 手柄输入状态 - 使用独立线程读取/dev/input/js0
-var raw_thread: Thread                      # 输入读取线程
-var raw_mutex = Mutex.new()                 # 线程互斥锁
-var raw_queue: Array[int] = []              # 按键事件队列
-var raw_running = false                     # 线程运行标志
-var raw_input_ok = false                    # /dev/input/js0是否可用
+## 手柄输入状态
 var last_input_label = "none"               # 最近按键调试标签
 var last_raw_button = -1                    # 最近原始按键ID
-var godot_input_enabled = false             # 是否启用Godot标准输入(备用)
 var godot_axis_active = {}                  # fallback 轴输入去抖状态
 
 
@@ -139,15 +135,15 @@ func _ready() -> void:
 		_set_status("UDP bind failed: %d" % err, "error")
 
 	# 启动手柄输入线程
-	_start_raw_input()
+	var raw_err = raw_input.start()
+	if raw_err != OK:
+		_set_status("Raw input thread failed; using Godot joypad fallback", "warn")
 	_log_ota("Godot terminal ready")
 	set_process(true)
 
 
 func _exit_tree() -> void:
-	raw_running = false
-	if raw_thread and raw_thread.is_started():
-		raw_thread.wait_to_finish()
+	raw_input.stop()
 
 
 ## 主循环 - 每帧执行
@@ -183,9 +179,9 @@ func _process(_delta: float) -> void:
 func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		_handle_key(event.keycode)
-	elif godot_input_enabled and event is InputEventJoypadButton:
+	elif raw_input.fallback_enabled and event is InputEventJoypadButton:
 		_handle_godot_joy_button(event.button_index, event.pressed)
-	elif godot_input_enabled and event is InputEventJoypadMotion:
+	elif raw_input.fallback_enabled and event is InputEventJoypadMotion:
 		_handle_godot_joy_motion(event.axis, event.axis_value)
 
 
@@ -231,59 +227,10 @@ func _draw() -> void:
 	_draw_footer()               # 底部快捷键提示栏
 
 
-## 启动手柄输入线程 - 直接读取Linux /dev/input/js0设备
-func _start_raw_input() -> void:
-	raw_running = true
-	raw_thread = Thread.new()
-	var err = raw_thread.start(Callable(self, "_raw_input_loop"))
-	if err != OK:
-		raw_input_ok = false
-		godot_input_enabled = true  # 回退到Godot标准输入
-		_set_status("Raw input thread failed; using Godot joypad fallback", "warn")
-
-
-func _raw_input_loop() -> void:
-	var f = FileAccess.open("/dev/input/js0", FileAccess.READ)
-	if f == null:
-		raw_mutex.lock()
-		raw_input_ok = false
-		godot_input_enabled = true
-		raw_mutex.unlock()
-		return
-
-	raw_mutex.lock()
-	raw_input_ok = true
-	godot_input_enabled = false
-	raw_mutex.unlock()
-
-	while raw_running:
-		var buf = f.get_buffer(8)
-		if buf.size() < 8:
-			OS.delay_msec(8)
-			continue
-		var value = _i16_le(buf[4], buf[5])
-		var event_type = buf[6] & 0x7f
-		var number = buf[7]
-		if event_type == 1:
-			raw_mutex.lock()
-			if value == 1:
-				raw_queue.append(number)
-			elif value == 0 and (number == 4 or number == 5):
-				raw_queue.append(1000 + number)
-			raw_mutex.unlock()
-
-
 func _drain_raw_input() -> void:
-	var events: Array[int] = []
-	raw_mutex.lock()
-	if not raw_queue.is_empty():
-		events = raw_queue.duplicate()
-		raw_queue.clear()
-	raw_mutex.unlock()
-
-	for raw in events:
-		if raw >= 1000:
-			var release_id = raw - 1000
+	for raw in raw_input.drain_events():
+		if raw >= RawInputReader.RELEASE_OFFSET:
+			var release_id = raw - RawInputReader.RELEASE_OFFSET
 			last_raw_button = release_id
 			last_input_label = "raw %d -> jog_stop" % release_id
 			_handle_action("jog_stop")
@@ -1340,9 +1287,9 @@ func _draw_command_matrix(rect: Rect2) -> void:
 
 func _draw_live_debug(rect: Rect2) -> void:
 	_draw_panel(rect, C_INPUT, C_LINE)
-	var input_state = "RAW /dev/input/js0" if raw_input_ok else "GODOT FALLBACK"
+	var input_state = "RAW /dev/input/js0" if raw_input.ok else "GODOT FALLBACK"
 	_draw_text(_t("input"), rect.position.x + 14, rect.position.y + 16, C_DIM, 13)
-	_draw_text(input_state, rect.position.x + 76, rect.position.y + 16, C_ACCENT if raw_input_ok else C_WARN, 13)
+	_draw_text(input_state, rect.position.x + 76, rect.position.y + 16, C_ACCENT if raw_input.ok else C_WARN, 13)
 	_draw_text(_t("last"), rect.position.x + 270, rect.position.y + 16, C_DIM, 13)
 	_draw_text(last_input_label, rect.position.x + 314, rect.position.y + 16, C_TEXT, 13)
 
@@ -1455,9 +1402,3 @@ func _state_color() -> Color:
 func _hex(value: int, width: int = 4) -> String:
 	return ("%X" % value).pad_zeros(width)
 
-
-func _i16_le(lo: int, hi: int) -> int:
-	var v = (hi << 8) | lo
-	if v >= 32768:
-		v -= 65536
-	return v
