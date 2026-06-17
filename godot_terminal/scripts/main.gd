@@ -33,6 +33,7 @@ const UploadModeScreen = preload("res://scripts/screens/upload_mode_screen.gd") 
 const MonitorScreen = preload("res://scripts/screens/monitor_screen.gd")  # 监控页
 const ConfigScreen = preload("res://scripts/screens/config_screen.gd")  # 配置页
 const OtaScreen = preload("res://scripts/screens/ota_screen.gd")  # 固件升级页
+const CanScreen = preload("res://scripts/screens/can_screen.gd")  # CAN日志页
 
 ## 主题色常量 - 深色科技风格配色方案
 const C_BG = UiTheme.C_BG
@@ -734,36 +735,7 @@ func _draw_ota_page() -> void:
 
 
 func _draw_can_page() -> void:
-	_draw_panel(Rect2(18, 140, 684, 108), C_PANEL, C_LINE)
-	_draw_text(_t("can_header"), 36, 158, C_ACCENT, 13)
-	_draw_text(_t("can_filter_label"), 36, 194, C_DIM, 13)
-	var input_rect = Rect2(112, 188, 474, 30)
-	draw_rect(input_rect, C_INPUT, true)
-	draw_rect(input_rect, C_LINE, false, 1.0)
-	_draw_text(can_log.filter if can_log.filter != "" else _t("can_all"), input_rect.position.x + 10, input_rect.position.y + 7, C_TEXT if can_log.filter != "" else C_DIM_2, 12)
-	if can_log.paused:
-		_draw_text(_t("can_paused"), 604, 194, C_WARN, 12)
-	var visible_count = _filtered_can_rows().size()
-	_draw_text("RX %d/%d" % [visible_count, can_log.rows.size()], 580, 158, C_ACCENT, 13)
-	var last_line = can_log.last_line if can_log.last_line != "" else "WAIT UDP PACKETS"
-	_draw_text(last_line, 36, 224, C_TEXT, 12, HORIZONTAL_ALIGNMENT_LEFT, 680)
-
-	_draw_action_rail(Rect2(18, 268, 188, 226), _can_action_labels(), int(selected[3]))
-	_draw_panel(Rect2(224, 268, 478, 372), C_PANEL, C_LINE)
-	_draw_text(_t("can_log"), 242, 288, C_DIM, 14)
-	var rows = _filtered_can_rows()
-	if rows.is_empty():
-		_draw_text(_t("can_empty"), 242, 332, C_TEXT, 15)
-		return
-	var start = max(0, rows.size() - 9)
-	var y = 322.0
-	for i in range(start, rows.size()):
-		var row: Dictionary = rows[i]
-		var row_rect = Rect2(240, y - 2, 444, 28)
-		draw_rect(row_rect, C_INPUT, true)
-		draw_rect(row_rect, C_LINE, false, 1.0)
-		_draw_text(str(row.get("line", "")), 250, y + 5, C_TEXT, 11, HORIZONTAL_ALIGNMENT_LEFT, 420)
-		y += 34
+	CanScreen.draw(self, font, Callable(self, "_t"), can_log, _can_action_labels(), int(selected[3]))
 
 
 func _draw_upload_mode_page() -> void:
