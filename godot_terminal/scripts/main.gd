@@ -14,6 +14,7 @@ const AppSettings = preload("res://scripts/settings.gd")  # 全局配置
 const Protocol = preload("res://scripts/protocol.gd")      # 通信协议
 const UdpClient = preload("res://scripts/protocol/udp_client.gd")  # UDP收发
 const CanLogFormatter = preload("res://scripts/protocol/can_log_formatter.gd")  # CAN日志格式化
+const MessageDispatcher = preload("res://scripts/protocol/message_dispatcher.gd")  # UDP消息分发
 const MotorController = preload("res://scripts/controllers/motor_controller.gd")  # 电机控制
 const UploadModeController = preload("res://scripts/controllers/upload_mode_controller.gd")  # 固件上传模式
 const NodeSelectorController = preload("res://scripts/controllers/node_selector_controller.gd")  # 节点选择
@@ -54,6 +55,7 @@ const NUMERIC_KEY_ROWS = UiConfig.NUMERIC_KEY_ROWS
 ## 核心对象
 var font: Font                              # 当前字体
 var udp_client = UdpClient.new()            # UDP通信对象
+var message_dispatcher = MessageDispatcher.new() # UDP消息处理器
 var motor = MotorDataScript.new()           # 电机数据实例
 var motor_controller = MotorController.new() # 电机命令控制器
 var upload_mode = UploadModeController.new() # 固件上传模式
@@ -525,46 +527,13 @@ func _record_can_row(raw: String, data: Dictionary) -> void:
 ## 消息分发处理 - 根据cmd字段路由到对应处理器
 func _handle_message(data: Dictionary) -> void:
 	last_rx_msec = Time.get_ticks_msec()
-	var cmd = str(data.get("cmd", ""))
-	var payload = Protocol.payload(data)
-	if payload != data:
-		payload["cmd"] = cmd
-
-	match cmd:
-		"motor_status":        # 电机状态上报(周期性)
-			if not Protocol.matches_node(payload, selected_node_id):
-				return
-			motor.update_from_dict(payload)
-			motor.alive = true
-		"sdo_read_result":     # SDO读取结果
-			if not Protocol.matches_node(payload, selected_node_id):
-				return
-			_handle_sdo_result(payload)
-		"ota_status":          # OTA升级状态
-			_handle_ota_status(payload)
-		"ack":                 # 通用应答
-			if not Protocol.matches_node(payload, selected_node_id):
-				return
-			var status = str(payload.get("status", ""))
-			var msg = str(payload.get("msg", ""))
-			var text = "OK: %s" % msg if status == "ok" else "ERR: %s" % msg
-			_set_status(text, "info" if status == "ok" else "error")
-			result_msg = text
-			_log_ota(text)
-
-func _handle_sdo_result(data: Dictionary) -> void:
-	var index = int(data.get("index", 0))
-	var result = str(data.get("data", ""))
-	var val_text = result
-	if result.is_valid_hex_number():
-		val_text = "0x%s (%d)" % [result, result.hex_to_int()]
-	result_msg = "0x%s = %s" % [_hex(index), val_text]
-	_set_status(result_msg)
-
-
-func _handle_ota_status(data: Dictionary) -> void:
-	var state = str(data.get("state", ""))
-	ota.apply_status(state)
+	var result = message_dispatcher.handle(data, selected_node_id, motor, ota)
+	if result.has("result_msg"):
+		result_msg = str(result.get("result_msg", ""))
+	if result.has("status_message"):
+		_set_status(str(result.get("status_message", "")), str(result.get("status_kind", "info")))
+	if result.has("ota_log"):
+		_log_ota(str(result.get("ota_log", "")))
 
 
 func _send(message: String, ui_msg: String = "", kind: String = "info") -> bool:
