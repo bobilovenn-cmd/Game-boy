@@ -20,6 +20,7 @@ const NodeSelectorController = preload("res://scripts/controllers/node_selector_
 const NumericInputController = preload("res://scripts/controllers/numeric_input_controller.gd")  # 数字输入
 const CanFilterController = preload("res://scripts/controllers/can_filter_controller.gd")  # CAN过滤键盘
 const NavigationController = preload("res://scripts/controllers/navigation_controller.gd")  # 页面导航
+const OtaTransferController = preload("res://scripts/controllers/ota_transfer_controller.gd")  # OTA分块传输
 const MotorDataScript = preload("res://scripts/motor_data.gd")  # 电机数据模型
 const CanLogState = preload("res://scripts/models/can_log_state.gd")  # CAN日志状态
 const OtaState = preload("res://scripts/models/ota_state.gd")  # OTA状态
@@ -78,6 +79,7 @@ var node_selector = NodeSelectorController.new() # 节点选择控制器
 var numeric_input = NumericInputController.new() # 数字输入控制器
 var can_filter = CanFilterController.new()   # CAN过滤输入控制器
 var navigation = NavigationController.new()  # 页面导航控制器
+var ota_transfer = OtaTransferController.new() # OTA传输控制器
 var can_log = CanLogState.new()             # CAN日志状态
 var ota = OtaState.new()                    # OTA升级状态
 var status = StatusState.new()              # 状态提示
@@ -598,37 +600,9 @@ func _send(message: String, ui_msg: String = "", kind: String = "info") -> bool:
 	return false
 
 
-## OTA传输状态机 - 每帧调用，按固定间隔发送固件数据块
-## 流程: ota_start → 分块发送(ota_chunk) → verify → flash
 func _process_ota(now: int) -> void:
-	if ota.state != "sending":
-		return
-	# 控制发送速率，避免网络拥塞
-	if now - ota.last_send_msec < AppSettings.OTA_SEND_INTERVAL_MS:
-		return
-	ota.last_send_msec = now
-
-	# 第一次发送: 先发ota_start通知固件大小和MD5
-	if not ota.started:
-		_send(Protocol.ota_start(ota.firmware_size, ota.firmware_md5))
-		ota.started = true
-		return
-
-	# 传输完成: 切换到校验状态
-	if ota.offset >= ota.firmware_size:
-		ota.mark_transfer_done()
-		return
-
-	# 分块发送: 每次OTA_CHUNK_SIZE字节，Base64编码
-	var end = min(ota.offset + AppSettings.OTA_CHUNK_SIZE, ota.firmware_size)
-	var chunk = ota.firmware_data.slice(ota.offset, end)
-	_send(Protocol.ota_chunk(ota.offset, Marshalls.raw_to_base64(chunk)))
-	ota.offset = end
-
-	# 更新进度和速度
-	var elapsed = max(0.001, float(now - ota.start_msec) / 1000.0)
-	ota.progress = int(float(ota.offset) * 100.0 / float(ota.firmware_size))
-	ota.speed_kbps = (float(ota.offset) / 1024.0) / elapsed
+	for message in ota_transfer.process(ota, now):
+		_send(message)
 
 
 func _load_default_firmware() -> bool:
