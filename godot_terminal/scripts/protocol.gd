@@ -115,3 +115,20 @@ static func parse(data: String) -> Dictionary:
 		"error": "json_parse_failed",
 	}
 
+
+static func payload(data: Dictionary) -> Dictionary:
+	if data.has("payload") and typeof(data["payload"]) == TYPE_DICTIONARY:
+		return data["payload"]
+	return data
+
+
+static func message_node(data: Dictionary) -> int:
+	for key in ["node", "node_id", "nodeId"]:
+		if data.has(key):
+			return int(data.get(key, 0))
+	return 0
+
+
+static func matches_node(data: Dictionary, selected_node: int) -> bool:
+	var node = message_node(data)
+	return node == 0 or node == selected_node

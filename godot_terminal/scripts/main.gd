@@ -650,25 +650,24 @@ func _record_can_row(raw: String, data: Dictionary) -> void:
 func _handle_message(data: Dictionary) -> void:
 	last_rx_msec = Time.get_ticks_msec()
 	var cmd = str(data.get("cmd", ""))
-	var payload = data
-	if data.has("payload") and typeof(data["payload"]) == TYPE_DICTIONARY:
-		payload = data["payload"]
+	var payload = Protocol.payload(data)
+	if payload != data:
 		payload["cmd"] = cmd
 
 	match cmd:
 		"motor_status":        # 电机状态上报(周期性)
-			if not _message_matches_selected_node(payload):
+			if not Protocol.matches_node(payload, selected_node_id):
 				return
 			motor.update_from_dict(payload)
 			motor.alive = true
 		"sdo_read_result":     # SDO读取结果
-			if not _message_matches_selected_node(payload):
+			if not Protocol.matches_node(payload, selected_node_id):
 				return
 			_handle_sdo_result(payload)
 		"ota_status":          # OTA升级状态
 			_handle_ota_status(payload)
 		"ack":                 # 通用应答
-			if not _message_matches_selected_node(payload):
+			if not Protocol.matches_node(payload, selected_node_id):
 				return
 			var status = str(payload.get("status", ""))
 			var msg = str(payload.get("msg", ""))
@@ -676,19 +675,6 @@ func _handle_message(data: Dictionary) -> void:
 			_set_status(text, "info" if status == "ok" else "error")
 			result_msg = text
 			_log_ota(text)
-
-
-func _message_matches_selected_node(data: Dictionary) -> bool:
-	var node = _message_node(data)
-	return node == 0 or node == selected_node_id
-
-
-func _message_node(data: Dictionary) -> int:
-	for key in ["node", "node_id", "nodeId"]:
-		if data.has(key):
-			return int(data.get(key, 0))
-	return 0
-
 
 func _handle_sdo_result(data: Dictionary) -> void:
 	var index = int(data.get("index", 0))
