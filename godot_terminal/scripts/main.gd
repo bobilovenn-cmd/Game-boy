@@ -18,6 +18,7 @@ const MotorController = preload("res://scripts/controllers/motor_controller.gd")
 const UploadModeController = preload("res://scripts/controllers/upload_mode_controller.gd")  # 固件上传模式
 const NodeSelectorController = preload("res://scripts/controllers/node_selector_controller.gd")  # 节点选择
 const NumericInputController = preload("res://scripts/controllers/numeric_input_controller.gd")  # 数字输入
+const CanFilterController = preload("res://scripts/controllers/can_filter_controller.gd")  # CAN过滤键盘
 const MotorDataScript = preload("res://scripts/motor_data.gd")  # 电机数据模型
 const CanLogState = preload("res://scripts/models/can_log_state.gd")  # CAN日志状态
 const OtaState = preload("res://scripts/models/ota_state.gd")  # OTA状态
@@ -74,6 +75,7 @@ var motor_controller = MotorController.new() # 电机命令控制器
 var upload_mode = UploadModeController.new() # 固件上传模式
 var node_selector = NodeSelectorController.new() # 节点选择控制器
 var numeric_input = NumericInputController.new() # 数字输入控制器
+var can_filter = CanFilterController.new()   # CAN过滤输入控制器
 var can_log = CanLogState.new()             # CAN日志状态
 var ota = OtaState.new()                    # OTA升级状态
 var status = StatusState.new()              # 状态提示
@@ -98,12 +100,6 @@ var result_msg = ""                         # SDO读取结果
 var last_heartbeat_msec = 0                 # 上次心跳时间
 var last_rx_msec = 0                        # 上次收到数据时间
 var udp_ready = false                       # UDP是否就绪
-
-## CAN日志输入状态
-var keyboard_open = false                   # 是否显示虚拟键盘
-var keyboard_row = 0                        # 虚拟键盘选中行
-var keyboard_col = 0                        # 虚拟键盘选中列
-var keyboard_lowercase = false              # 虚拟键盘是否小写输入
 
 ## 手柄输入状态
 var last_input_label = "none"               # 最近按键调试标签
@@ -199,7 +195,7 @@ func _draw() -> void:
 		_draw_upload_mode_page() # 固件上传模式独立页面
 		_draw_status_overlay()
 		return
-	if keyboard_open:
+	if can_filter.open:
 		_draw_filter_input_page() # CAN过滤字段独立输入界面
 		_draw_status_overlay()
 		return
@@ -311,8 +307,8 @@ func _handle_action(action: String) -> void:
 	if upload_mode.open:
 		_handle_upload_mode_action(action)
 		return
-	if keyboard_open:
-		_handle_keyboard_action(action)
+	if can_filter.open:
+		_handle_filter_input_action(action)
 		return
 	if numeric_input.open:
 		_handle_numeric_input_action(action)
@@ -460,9 +456,7 @@ func _confirm_current_selection() -> void:
 	elif current_tab == 3:
 		match int(selected[3]):
 			0:
-				keyboard_open = true
-				keyboard_row = 1
-				keyboard_col = 0
+				can_filter.start()
 			1:
 				can_log.clear()
 				_set_status(_t("can_reset_status"))
@@ -517,45 +511,15 @@ func _confirm_numeric_input(kind: String, value: int) -> void:
 		_send(motor_controller.move_position(value), _t("motion_position_sent"))
 
 
-func _handle_keyboard_action(action: String) -> void:
-	match action:
-		"up":
-			keyboard_row = max(0, keyboard_row - 1)
-			keyboard_col = min(keyboard_col, KEYBOARD_ROWS[keyboard_row].size() - 1)
-		"down":
-			keyboard_row = min(KEYBOARD_ROWS.size() - 1, keyboard_row + 1)
-			keyboard_col = min(keyboard_col, KEYBOARD_ROWS[keyboard_row].size() - 1)
-		"left":
-			keyboard_col = max(0, keyboard_col - 1)
-		"right":
-			keyboard_col = min(KEYBOARD_ROWS[keyboard_row].size() - 1, keyboard_col + 1)
-		"confirm":
-			_apply_keyboard_key(_keyboard_key_value(keyboard_row, keyboard_col))
-		"back":
-			keyboard_open = false
+func _handle_filter_input_action(action: String) -> void:
+	var result = can_filter.handle_action(action, KEYBOARD_ROWS, can_log.filter)
+	if result.has("filter"):
+		can_log.filter = str(result.get("filter", can_log.filter))
+	match str(result.get("event", "")):
 		"language_select":
-			keyboard_open = false
 			_return_to_language_select()
-
-
-func _apply_keyboard_key(key: String) -> void:
-	match key:
-		"SP":
-			if can_log.filter.length() < 32:
-				can_log.filter += " "
-		"DEL":
-			if can_log.filter.length() > 0:
-				can_log.filter = can_log.filter.substr(0, can_log.filter.length() - 1)
-		"CLR":
-			can_log.filter = ""
-		"OK":
-			keyboard_open = false
+		"selected":
 			_set_status(_t("can_filter_label") + ": " + (can_log.filter if can_log.filter != "" else _t("can_all")))
-		"SHIFT":
-			keyboard_lowercase = not keyboard_lowercase
-		_:
-			if can_log.filter.length() < 32:
-				can_log.filter += key
 
 
 ## 轮询UDP接收缓冲区 - 处理所有待处理的数据包
@@ -749,7 +713,7 @@ func _draw_numeric_input_page() -> void:
 
 
 func _draw_filter_input_page() -> void:
-	FilterInputScreen.draw(self, font, Callable(self, "_t"), can_log.filter, KEYBOARD_ROWS, keyboard_row, keyboard_col, keyboard_lowercase, get_viewport_rect().size)
+	FilterInputScreen.draw(self, font, Callable(self, "_t"), can_log.filter, KEYBOARD_ROWS, can_filter.key_row, can_filter.key_col, can_filter.lowercase, get_viewport_rect().size)
 
 
 func _draw_status_overlay() -> void:
@@ -810,13 +774,6 @@ func _texts(keys: Array) -> Array[String]:
 
 func _can_action_labels() -> Array[String]:
 	return [_t("can_filter"), _t("can_reset"), _t("can_run") if can_log.paused else _t("can_pause")]
-
-
-func _keyboard_key_value(row_index: int, col_index: int) -> String:
-	var key = str(KEYBOARD_ROWS[row_index][col_index])
-	if key.length() == 1 and "ABCDEFGHIJKLMNOPQRSTUVWXYZ".contains(key) and keyboard_lowercase:
-		return key.to_lower()
-	return key
 
 
 func _set_status(message: String, kind: String = "info") -> void:
