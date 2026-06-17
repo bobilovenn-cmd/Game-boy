@@ -34,6 +34,7 @@ const MonitorScreen = preload("res://scripts/screens/monitor_screen.gd")  # 监�
 const ConfigScreen = preload("res://scripts/screens/config_screen.gd")  # 配置页
 const OtaScreen = preload("res://scripts/screens/ota_screen.gd")  # 固件升级页
 const CanScreen = preload("res://scripts/screens/can_screen.gd")  # CAN日志页
+const NumericInputScreen = preload("res://scripts/screens/numeric_input_screen.gd")  # 数字输入页
 
 ## 主题色常量 - 深色科技风格配色方案
 const C_BG = UiTheme.C_BG
@@ -743,46 +744,7 @@ func _draw_upload_mode_page() -> void:
 
 
 func _draw_numeric_input_page() -> void:
-	draw_rect(Rect2(Vector2.ZERO, get_viewport_rect().size), C_BG, true)
-	var rect = Rect2(78, 58, 564, 548)
-	draw_rect(rect, C_BG_2, true)
-	draw_rect(rect, C_ACCENT, false, 2.0)
-	draw_line(rect.position, rect.position + Vector2(28, 0), C_ACCENT, 3.0)
-	draw_line(rect.position, rect.position + Vector2(0, 28), C_ACCENT, 3.0)
-	var title_key = "motion_speed_title" if numeric_input.kind == "speed" else "motion_position_title"
-	var hint_key = "motion_speed_hint" if numeric_input.kind == "speed" else "motion_position_hint"
-	_draw_text(_t(title_key), rect.position.x + 30, rect.position.y + 34, C_TEXT, 24)
-	_draw_text(_t(hint_key), rect.position.x + 30, rect.position.y + 78, C_DIM, 14)
-	var input_rect = Rect2(rect.position.x + 72, rect.position.y + 126, rect.size.x - 144, 58)
-	draw_rect(input_rect, C_INPUT, true)
-	draw_rect(input_rect, C_LINE, false, 1.0)
-	var value_text = numeric_input.value if numeric_input.value != "" else "--"
-	_draw_text(value_text, input_rect.position.x, input_rect.position.y + 15, C_ACCENT if numeric_input.value != "" else C_DIM_2, 22, HORIZONTAL_ALIGNMENT_CENTER, input_rect.size.x)
-	if numeric_input.kind == "speed":
-		_draw_text("speed", input_rect.end.x - 66, input_rect.position.y + 20, C_DIM, 12)
-	var key_w = 106.0
-	var key_h = 42.0
-	var gap = 12.0
-	var y = rect.position.y + 226
-	for row_index in NUMERIC_KEY_ROWS.size():
-		var row: Array = NUMERIC_KEY_ROWS[row_index]
-		var row_w = float(row.size()) * key_w + float(row.size() - 1) * gap
-		var x = 360.0 - row_w * 0.5
-		for col_index in row.size():
-			var r = Rect2(x + col_index * (key_w + gap), y, key_w, key_h)
-			draw_rect(r, C_INPUT, true)
-			draw_rect(r, C_LINE, false, 1.0)
-			_draw_text(str(row[col_index]), r.position.x, r.position.y + 11, C_TEXT, 14, HORIZONTAL_ALIGNMENT_CENTER, r.size.x)
-		y += key_h + gap
-	var selected_row: Array = NUMERIC_KEY_ROWS[numeric_input.key_row]
-	var selected_row_w = float(selected_row.size()) * key_w + float(selected_row.size() - 1) * gap
-	var selected_x = 360.0 - selected_row_w * 0.5 + numeric_input.key_col * (key_w + gap)
-	var selected_y = rect.position.y + 226 + numeric_input.key_row * (key_h + gap)
-	var selected_rect = Rect2(selected_x, selected_y, key_w, key_h)
-	var selected_key = str(NUMERIC_KEY_ROWS[numeric_input.key_row][numeric_input.key_col])
-	var selected_color = C_WARN if selected_key == "BACK" else C_ACCENT
-	draw_rect(selected_rect, selected_color, false, 2.0)
-	draw_rect(Rect2(selected_rect.position.x, selected_rect.position.y, 5, selected_rect.size.y), selected_color, true)
+	NumericInputScreen.draw(self, font, Callable(self, "_t"), numeric_input, NUMERIC_KEY_ROWS, get_viewport_rect().size)
 
 
 func _draw_filter_input_page() -> void:
