@@ -31,6 +31,7 @@ const LanguageScreen = preload("res://scripts/screens/language_screen.gd")  # �
 const NodeSelectScreen = preload("res://scripts/screens/node_select_screen.gd")  # 节点选择页
 const UploadModeScreen = preload("res://scripts/screens/upload_mode_screen.gd")  # 固件上传模式页
 const MonitorScreen = preload("res://scripts/screens/monitor_screen.gd")  # 监控页
+const ConfigScreen = preload("res://scripts/screens/config_screen.gd")  # 配置页
 
 ## 主题色常量 - 深色科技风格配色方案
 const C_BG = UiTheme.C_BG
@@ -724,26 +725,7 @@ func _draw_monitor_page() -> void:
 
 
 func _draw_config_page() -> void:
-	_draw_panel(Rect2(18, 140, 684, 386), C_PANEL, C_LINE)
-	_draw_text(_t("config_header"), 36, 158, C_ACCENT, 13)
-	var y = 194.0
-	for i in CONFIG_ITEMS.size():
-		var item: Array = CONFIG_ITEMS[i]
-		var row_rect = Rect2(34, y, 652, 32)
-		draw_rect(row_rect, C_INPUT, true)
-		draw_rect(row_rect, C_LINE, false, 1.0)
-		var tc = C_TEXT
-		var dc = C_DIM
-		_draw_text(_t(item[0]), 46, y + 9, tc, 12)
-		_draw_text("0x%s:%d" % [_hex(item[1]), item[2]], 288, y + 9, dc, 12)
-		_draw_text(_t(item[3]), 408, y + 9, dc, 12)
-		y += 36
-	var selected_rect = Rect2(34, 194 + int(selected[1]) * 36, 652, 32)
-	draw_rect(selected_rect, C_ACCENT, false, 2.0)
-	draw_rect(Rect2(selected_rect.position.x, selected_rect.position.y, 5, selected_rect.size.y), C_ACCENT, true)
-	_draw_panel(Rect2(18, 542, 684, 62), C_INPUT, C_LINE)
-	_draw_text(_t("sdo_result"), 36, 562, C_TEXT, 11)
-	_draw_text(result_msg if result_msg != "" else _t("no_sdo"), 36, 586, C_TEXT, 11)
+	ConfigScreen.draw(self, font, Callable(self, "_t"), CONFIG_ITEMS, int(selected[1]), result_msg)
 
 
 func _draw_ota_page() -> void:
