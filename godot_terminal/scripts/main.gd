@@ -17,6 +17,7 @@ const CanLogFormatter = preload("res://scripts/protocol/can_log_formatter.gd")  
 const MotorController = preload("res://scripts/controllers/motor_controller.gd")  # 电机控制
 const UploadModeController = preload("res://scripts/controllers/upload_mode_controller.gd")  # 固件上传模式
 const NodeSelectorController = preload("res://scripts/controllers/node_selector_controller.gd")  # 节点选择
+const NumericInputController = preload("res://scripts/controllers/numeric_input_controller.gd")  # 数字输入
 const MotorDataScript = preload("res://scripts/motor_data.gd")  # 电机数据模型
 const CanLogState = preload("res://scripts/models/can_log_state.gd")  # CAN日志状态
 const OtaState = preload("res://scripts/models/ota_state.gd")  # OTA状态
@@ -63,6 +64,7 @@ var motor = MotorDataScript.new()           # 电机数据实例
 var motor_controller = MotorController.new() # 电机命令控制器
 var upload_mode = UploadModeController.new() # 固件上传模式
 var node_selector = NodeSelectorController.new() # 节点选择控制器
+var numeric_input = NumericInputController.new() # 数字输入控制器
 var can_log = CanLogState.new()             # CAN日志状态
 var ota = OtaState.new()                    # OTA升级状态
 var status = StatusState.new()              # 状态提示
@@ -93,11 +95,6 @@ var keyboard_open = false                   # 是否显示虚拟键盘
 var keyboard_row = 0                        # 虚拟键盘选中行
 var keyboard_col = 0                        # 虚拟键盘选中列
 var keyboard_lowercase = false              # 虚拟键盘是否小写输入
-var numeric_input_open = false              # 运动参数数字输入页
-var numeric_input_kind = ""                 # position/speed
-var numeric_input_value = ""                # 输入值
-var numeric_key_row = 0
-var numeric_key_col = 0
 
 ## 手柄输入状态
 var last_input_label = "none"               # 最近按键调试标签
@@ -197,7 +194,7 @@ func _draw() -> void:
 		_draw_filter_input_page() # CAN过滤字段独立输入界面
 		_draw_status_overlay()
 		return
-	if numeric_input_open:
+	if numeric_input.open:
 		_draw_numeric_input_page()
 		_draw_status_overlay()
 		return
@@ -308,7 +305,7 @@ func _handle_action(action: String) -> void:
 	if keyboard_open:
 		_handle_keyboard_action(action)
 		return
-	if numeric_input_open:
+	if numeric_input.open:
 		_handle_numeric_input_action(action)
 		return
 
@@ -484,69 +481,31 @@ func _handle_upload_mode_action(action: String) -> void:
 
 
 func _open_numeric_input(kind: String) -> void:
-	numeric_input_open = true
-	numeric_input_kind = kind
-	numeric_input_value = str(motor_controller.target_speed) if kind == "speed" else ""
-	numeric_key_row = 0
-	numeric_key_col = 0
+	numeric_input.start(kind, motor_controller.target_speed)
 
 
 func _handle_numeric_input_action(action: String) -> void:
-	match action:
-		"up":
-			numeric_key_row = max(0, numeric_key_row - 1)
-			numeric_key_col = min(numeric_key_col, NUMERIC_KEY_ROWS[numeric_key_row].size() - 1)
-		"down":
-			numeric_key_row = min(NUMERIC_KEY_ROWS.size() - 1, numeric_key_row + 1)
-			numeric_key_col = min(numeric_key_col, NUMERIC_KEY_ROWS[numeric_key_row].size() - 1)
-		"left":
-			numeric_key_col = max(0, numeric_key_col - 1)
-		"right":
-			numeric_key_col = min(NUMERIC_KEY_ROWS[numeric_key_row].size() - 1, numeric_key_col + 1)
-		"confirm":
-			_apply_numeric_key(str(NUMERIC_KEY_ROWS[numeric_key_row][numeric_key_col]))
-		"back":
-			numeric_input_open = false
+	var result = numeric_input.handle_action(action, NUMERIC_KEY_ROWS)
+	match str(result.get("event", "")):
 		"language_select":
-			numeric_input_open = false
 			_return_to_language_select()
+		"error":
+			if str(result.get("kind", "")) == "speed_range":
+				_set_status(_t("motion_speed_range"), "error")
+			else:
+				_set_status(_t("motion_input_empty"), "warn")
+		"selected":
+			_confirm_numeric_input(str(result.get("kind", "")), int(result.get("value", 0)))
 
 
-func _apply_numeric_key(key: String) -> void:
-	match key:
-		"BACK":
-			numeric_input_open = false
-		"DEL":
-			if numeric_input_value.length() > 0:
-				numeric_input_value = numeric_input_value.substr(0, numeric_input_value.length() - 1)
-		"CLR":
-			numeric_input_value = ""
-		"OK":
-			_confirm_numeric_input()
-		"-":
-			if numeric_input_kind == "position":
-				if numeric_input_value.begins_with("-"):
-					numeric_input_value = numeric_input_value.substr(1)
-				elif numeric_input_value == "":
-					numeric_input_value = "-"
-		_:
-			if numeric_input_value.length() < 10:
-				numeric_input_value += key
-
-
-func _confirm_numeric_input() -> void:
-	if numeric_input_value == "" or numeric_input_value == "-" or not numeric_input_value.is_valid_int():
-		_set_status(_t("motion_input_empty"), "warn")
-		return
-	var value = int(numeric_input_value)
-	if numeric_input_kind == "speed":
+func _confirm_numeric_input(kind: String, value: int) -> void:
+	if kind == "speed":
 		if value < 1 or value > 300000:
 			_set_status(_t("motion_speed_range"), "error")
 			return
 		_send(motor_controller.set_target_speed(value), _t("motion_speed_sent") % motor_controller.target_speed)
 	else:
 		_send(motor_controller.move_position(value), _t("motion_position_sent"))
-	numeric_input_open = false
 
 
 func _handle_keyboard_action(action: String) -> void:
@@ -947,16 +906,16 @@ func _draw_numeric_input_page() -> void:
 	draw_rect(rect, C_ACCENT, false, 2.0)
 	draw_line(rect.position, rect.position + Vector2(28, 0), C_ACCENT, 3.0)
 	draw_line(rect.position, rect.position + Vector2(0, 28), C_ACCENT, 3.0)
-	var title_key = "motion_speed_title" if numeric_input_kind == "speed" else "motion_position_title"
-	var hint_key = "motion_speed_hint" if numeric_input_kind == "speed" else "motion_position_hint"
+	var title_key = "motion_speed_title" if numeric_input.kind == "speed" else "motion_position_title"
+	var hint_key = "motion_speed_hint" if numeric_input.kind == "speed" else "motion_position_hint"
 	_draw_text(_t(title_key), rect.position.x + 30, rect.position.y + 34, C_TEXT, 24)
 	_draw_text(_t(hint_key), rect.position.x + 30, rect.position.y + 78, C_DIM, 14)
 	var input_rect = Rect2(rect.position.x + 72, rect.position.y + 126, rect.size.x - 144, 58)
 	draw_rect(input_rect, C_INPUT, true)
 	draw_rect(input_rect, C_LINE, false, 1.0)
-	var value_text = numeric_input_value if numeric_input_value != "" else "--"
-	_draw_text(value_text, input_rect.position.x, input_rect.position.y + 15, C_ACCENT if numeric_input_value != "" else C_DIM_2, 22, HORIZONTAL_ALIGNMENT_CENTER, input_rect.size.x)
-	if numeric_input_kind == "speed":
+	var value_text = numeric_input.value if numeric_input.value != "" else "--"
+	_draw_text(value_text, input_rect.position.x, input_rect.position.y + 15, C_ACCENT if numeric_input.value != "" else C_DIM_2, 22, HORIZONTAL_ALIGNMENT_CENTER, input_rect.size.x)
+	if numeric_input.kind == "speed":
 		_draw_text("speed", input_rect.end.x - 66, input_rect.position.y + 20, C_DIM, 12)
 	var key_w = 106.0
 	var key_h = 42.0
@@ -972,12 +931,12 @@ func _draw_numeric_input_page() -> void:
 			draw_rect(r, C_LINE, false, 1.0)
 			_draw_text(str(row[col_index]), r.position.x, r.position.y + 11, C_TEXT, 14, HORIZONTAL_ALIGNMENT_CENTER, r.size.x)
 		y += key_h + gap
-	var selected_row: Array = NUMERIC_KEY_ROWS[numeric_key_row]
+	var selected_row: Array = NUMERIC_KEY_ROWS[numeric_input.key_row]
 	var selected_row_w = float(selected_row.size()) * key_w + float(selected_row.size() - 1) * gap
-	var selected_x = 360.0 - selected_row_w * 0.5 + numeric_key_col * (key_w + gap)
-	var selected_y = rect.position.y + 226 + numeric_key_row * (key_h + gap)
+	var selected_x = 360.0 - selected_row_w * 0.5 + numeric_input.key_col * (key_w + gap)
+	var selected_y = rect.position.y + 226 + numeric_input.key_row * (key_h + gap)
 	var selected_rect = Rect2(selected_x, selected_y, key_w, key_h)
-	var selected_key = str(NUMERIC_KEY_ROWS[numeric_key_row][numeric_key_col])
+	var selected_key = str(NUMERIC_KEY_ROWS[numeric_input.key_row][numeric_input.key_col])
 	var selected_color = C_WARN if selected_key == "BACK" else C_ACCENT
 	draw_rect(selected_rect, selected_color, false, 2.0)
 	draw_rect(Rect2(selected_rect.position.x, selected_rect.position.y, 5, selected_rect.size.y), selected_color, true)
