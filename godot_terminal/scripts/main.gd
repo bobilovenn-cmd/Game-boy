@@ -35,6 +35,7 @@ const ConfigScreen = preload("res://scripts/screens/config_screen.gd")  # 配置
 const OtaScreen = preload("res://scripts/screens/ota_screen.gd")  # 固件升级页
 const CanScreen = preload("res://scripts/screens/can_screen.gd")  # CAN日志页
 const NumericInputScreen = preload("res://scripts/screens/numeric_input_screen.gd")  # 数字输入页
+const FilterInputScreen = preload("res://scripts/screens/filter_input_screen.gd")  # CAN过滤键盘页
 
 ## 主题色常量 - 深色科技风格配色方案
 const C_BG = UiTheme.C_BG
@@ -748,53 +749,7 @@ func _draw_numeric_input_page() -> void:
 
 
 func _draw_filter_input_page() -> void:
-	draw_rect(Rect2(Vector2.ZERO, get_viewport_rect().size), C_BG, true)
-	var rect = Rect2(28, 72, 664, 548)
-	draw_rect(rect, C_BG_2, true)
-	draw_rect(rect, C_ACCENT, false, 2.0)
-	draw_line(rect.position, rect.position + Vector2(28, 0), C_ACCENT, 3.0)
-	draw_line(rect.position, rect.position + Vector2(0, 28), C_ACCENT, 3.0)
-	_draw_text(_t("keyboard_title"), rect.position.x + 22, rect.position.y + 24, C_TEXT, 22)
-	_draw_text(_t("keyboard_hint"), rect.position.x + 22, rect.position.y + 62, C_DIM, 13)
-
-	var input_rect = Rect2(rect.position.x + 44, rect.position.y + 102, rect.size.x - 88, 52)
-	draw_rect(input_rect, C_INPUT, true)
-	draw_rect(input_rect, C_LINE, false, 1.0)
-	_draw_text(_t("can_filter_label") + ":", input_rect.position.x + 16, input_rect.position.y + 15, C_TEXT, 16)
-	_draw_text(can_log.filter if can_log.filter != "" else _t("can_all"), input_rect.position.x + 104, input_rect.position.y + 15, C_TEXT if can_log.filter != "" else C_DIM_2, 16)
-
-	var key_h = 30.0
-	var gap = 6.0
-	var y = rect.position.y + 186
-	for row_index in KEYBOARD_ROWS.size():
-		var row: Array = KEYBOARD_ROWS[row_index]
-		var key_w = 56.0
-		if row_index == 3:
-			key_w = 62.0
-		elif row_index == 4:
-			key_w = 58.0
-		var row_w = float(row.size()) * key_w + float(row.size() - 1) * gap
-		var x = rect.position.x + (rect.size.x - row_w) * 0.5
-		for col_index in row.size():
-			var r = Rect2(x + col_index * (key_w + gap), y, key_w, key_h)
-			draw_rect(r, C_PANEL, true)
-			draw_rect(r, C_LINE, false, 1.0)
-			var label = _keyboard_key_label(row_index, col_index)
-			_draw_text(label, r.position.x, r.position.y + 7, C_TEXT, 11, HORIZONTAL_ALIGNMENT_CENTER, r.size.x)
-		y += key_h + gap
-
-	var selected_row: Array = KEYBOARD_ROWS[keyboard_row]
-	var selected_key_w = 56.0
-	if keyboard_row == 3:
-		selected_key_w = 62.0
-	elif keyboard_row == 4:
-		selected_key_w = 58.0
-	var selected_row_w = float(selected_row.size()) * selected_key_w + float(selected_row.size() - 1) * gap
-	var selected_x = rect.position.x + (rect.size.x - selected_row_w) * 0.5 + keyboard_col * (selected_key_w + gap)
-	var selected_y = rect.position.y + 186 + keyboard_row * (key_h + gap)
-	var selected_rect = Rect2(selected_x, selected_y, selected_key_w, key_h)
-	draw_rect(selected_rect, C_ACCENT, false, 2.0)
-	draw_rect(Rect2(selected_rect.position.x, selected_rect.position.y, 5, selected_rect.size.y), C_ACCENT, true)
+	FilterInputScreen.draw(self, font, Callable(self, "_t"), can_log.filter, KEYBOARD_ROWS, keyboard_row, keyboard_col, keyboard_lowercase, get_viewport_rect().size)
 
 
 func _draw_action_rail(rect: Rect2, items: Array, selected_index: int) -> void:
