@@ -19,6 +19,7 @@ const UploadModeController = preload("res://scripts/controllers/upload_mode_cont
 const NodeSelectorController = preload("res://scripts/controllers/node_selector_controller.gd")  # 节点选择
 const NumericInputController = preload("res://scripts/controllers/numeric_input_controller.gd")  # 数字输入
 const CanFilterController = preload("res://scripts/controllers/can_filter_controller.gd")  # CAN过滤键盘
+const NavigationController = preload("res://scripts/controllers/navigation_controller.gd")  # 页面导航
 const MotorDataScript = preload("res://scripts/motor_data.gd")  # 电机数据模型
 const CanLogState = preload("res://scripts/models/can_log_state.gd")  # CAN日志状态
 const OtaState = preload("res://scripts/models/ota_state.gd")  # OTA状态
@@ -76,6 +77,7 @@ var upload_mode = UploadModeController.new() # 固件上传模式
 var node_selector = NodeSelectorController.new() # 节点选择控制器
 var numeric_input = NumericInputController.new() # 数字输入控制器
 var can_filter = CanFilterController.new()   # CAN过滤输入控制器
+var navigation = NavigationController.new()  # 页面导航控制器
 var can_log = CanLogState.new()             # CAN日志状态
 var ota = OtaState.new()                    # OTA升级状态
 var status = StatusState.new()              # 状态提示
@@ -89,10 +91,6 @@ var ui_lang = UiText.LANG_ZH               # 当前界面语言
 ## 节点选择状态
 var node_selected = false                   # 是否已选择电机节点
 var selected_node_id = AppSettings.DEFAULT_NODE_ID  # 当前控制节点
-
-## 页面导航状态
-var current_tab = 0                         # 当前页面(0=监控, 1=配置, 2=OTA, 3=CAN日志)
-var selected = [0, 0, 0, 0]                 # 各页面当前选中项索引
 
 var result_msg = ""                         # SDO读取结果
 
@@ -110,6 +108,7 @@ var godot_axis_active = {}                  # fallback 轴输入去抖状态
 ## 应用初始化
 func _ready() -> void:
 	motor_controller.configure_node(selected_node_id)
+	navigation.reset(TAB_KEYS.size())
 
 	# 加载打包的CJK字体(支持中英文)，失败则回退到系统字体
 	var cjk_font = ResourceLoader.load("res://fonts/AGV_CJK.ttf", "", ResourceLoader.CACHE_MODE_REUSE)
@@ -208,7 +207,7 @@ func _draw() -> void:
 	_draw_tabs()                 # 页面标签栏(监控/配置/升级)
 
 	# 根据当前页面绘制内容
-	match current_tab:
+	match navigation.current_tab:
 		0:
 			_draw_monitor_page()   # 监控页: 命令列表 + 遥测数据 + 波形图
 		1:
@@ -315,28 +314,8 @@ func _handle_action(action: String) -> void:
 		return
 
 	match action:
-		"menu":
-			current_tab = (current_tab + 1) % TAB_KEYS.size()
-			_set_status("PAGE %s" % _tab_name(current_tab))
-		"up":
-			selected[current_tab] = max(0, int(selected[current_tab]) - 1)
-		"down":
-			var max_idx = MONITOR_ITEM_KEYS.size() - 1
-			if current_tab == 1:
-				max_idx = CONFIG_ITEMS.size() - 1
-			elif current_tab == 2:
-				max_idx = OTA_ITEM_KEYS.size() - 1
-			elif current_tab == 3:
-				max_idx = CAN_ITEM_KEYS.size() - 1
-			selected[current_tab] = min(max_idx, int(selected[current_tab]) + 1)
-		"left":
-			current_tab = (current_tab + TAB_KEYS.size() - 1) % TAB_KEYS.size()
-			_set_status("PAGE %s" % _tab_name(current_tab))
-		"right":
-			current_tab = (current_tab + 1) % TAB_KEYS.size()
-			_set_status("PAGE %s" % _tab_name(current_tab))
-		"confirm":
-			_confirm_current_selection()
+		"menu", "up", "down", "left", "right", "confirm":
+			_handle_navigation_action(action)
 		"back":
 			_send(motor_controller.jog_stop(), "Jog stopped")
 		"enable":
@@ -389,12 +368,29 @@ func _handle_node_action(action: String) -> void:
 			_confirm_node_input(int(result.get("node", AppSettings.DEFAULT_NODE_ID)))
 
 
+func _handle_navigation_action(action: String) -> void:
+	var result = navigation.handle_action(action, TAB_KEYS.size(), _navigation_max_indices())
+	match str(result.get("event", "")):
+		"page_changed":
+			_set_status("PAGE %s" % _tab_name(navigation.current_tab))
+		"confirm":
+			_confirm_current_selection()
+
+
+func _navigation_max_indices() -> Array[int]:
+	return [
+		MONITOR_ITEM_KEYS.size() - 1,
+		CONFIG_ITEMS.size() - 1,
+		OTA_ITEM_KEYS.size() - 1,
+		CAN_ITEM_KEYS.size() - 1,
+	]
+
+
 func _confirm_node_input(value: int) -> void:
 	selected_node_id = value
 	motor_controller.configure_node(selected_node_id)
 	node_selected = true
-	current_tab = 0
-	selected = [0, 0, 0, 0]
+	navigation.reset(TAB_KEYS.size())
 	motor = MotorDataScript.new()
 	last_rx_msec = 0
 	result_msg = ""
@@ -413,8 +409,10 @@ func _return_to_language_select() -> void:
 
 
 func _confirm_current_selection() -> void:
-	if current_tab == 0:
-		match int(selected[0]):
+	var tab = navigation.current_tab
+	var index = navigation.selected_index(tab)
+	if tab == 0:
+		match index:
 			0:
 				_send(motor_controller.enable(), "Enable sent")
 			1:
@@ -429,8 +427,8 @@ func _confirm_current_selection() -> void:
 				_open_numeric_input("position")
 			6:
 				_open_numeric_input("speed")
-	elif current_tab == 1:
-		var item: Array = CONFIG_ITEMS[int(selected[1])]
+	elif tab == 1:
+		var item: Array = CONFIG_ITEMS[index]
 		var name_key: String = item[0]
 		var index: int = item[1]
 		var sub: int = item[2]
@@ -439,8 +437,8 @@ func _confirm_current_selection() -> void:
 		else:
 			result_msg = "Reading 0x%s..." % _hex(index)
 			_send(Protocol.sdo_read(selected_node_id, index, sub), result_msg)
-	elif current_tab == 2:
-		match int(selected[2]):
+	elif tab == 2:
+		match index:
 			0:
 				_open_upload_mode()
 			1:
@@ -453,8 +451,8 @@ func _confirm_current_selection() -> void:
 			4:
 				_send(Protocol.ota_flash(selected_node_id), "Flash command sent")
 				_log_ota("Flash command sent")
-	elif current_tab == 3:
-		match int(selected[3]):
+	elif tab == 3:
+		match index:
 			0:
 				can_filter.start()
 			1:
@@ -681,7 +679,7 @@ func _draw_tabs() -> void:
 	var x = 18.0
 	for i in TAB_KEYS.size():
 		var rect = Rect2(x, 88, tab_w, 38)
-		var active = i == current_tab
+		var active = i == navigation.current_tab
 		draw_rect(rect, C_ACCENT if active else C_PANEL_2, true)
 		draw_rect(rect, C_ACCENT if active else C_LINE, false, 1.0)
 		_draw_text(_tab_name(i), rect.position.x, rect.position.y + 10, C_TEXT, 12, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x)
@@ -689,19 +687,19 @@ func _draw_tabs() -> void:
 
 
 func _draw_monitor_page() -> void:
-	MonitorScreen.draw(self, font, Callable(self, "_t"), _texts(MONITOR_ITEM_KEYS), int(selected[0]), motor, raw_input.ok, last_input_label)
+	MonitorScreen.draw(self, font, Callable(self, "_t"), _texts(MONITOR_ITEM_KEYS), navigation.selected_index(0), motor, raw_input.ok, last_input_label)
 
 
 func _draw_config_page() -> void:
-	ConfigScreen.draw(self, font, Callable(self, "_t"), CONFIG_ITEMS, int(selected[1]), result_msg)
+	ConfigScreen.draw(self, font, Callable(self, "_t"), CONFIG_ITEMS, navigation.selected_index(1), result_msg)
 
 
 func _draw_ota_page() -> void:
-	OtaScreen.draw(self, font, Callable(self, "_t"), ota, OTA_ITEM_KEYS, int(selected[2]))
+	OtaScreen.draw(self, font, Callable(self, "_t"), ota, OTA_ITEM_KEYS, navigation.selected_index(2))
 
 
 func _draw_can_page() -> void:
-	CanScreen.draw(self, font, Callable(self, "_t"), can_log, _can_action_labels(), int(selected[3]))
+	CanScreen.draw(self, font, Callable(self, "_t"), can_log, _can_action_labels(), navigation.selected_index(3))
 
 
 func _draw_upload_mode_page() -> void:
