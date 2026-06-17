@@ -32,6 +32,7 @@ const NodeSelectScreen = preload("res://scripts/screens/node_select_screen.gd") 
 const UploadModeScreen = preload("res://scripts/screens/upload_mode_screen.gd")  # 固件上传模式页
 const MonitorScreen = preload("res://scripts/screens/monitor_screen.gd")  # 监控页
 const ConfigScreen = preload("res://scripts/screens/config_screen.gd")  # 配置页
+const OtaScreen = preload("res://scripts/screens/ota_screen.gd")  # 固件升级页
 
 ## 主题色常量 - 深色科技风格配色方案
 const C_BG = UiTheme.C_BG
@@ -729,33 +730,7 @@ func _draw_config_page() -> void:
 
 
 func _draw_ota_page() -> void:
-	_draw_panel(Rect2(18, 140, 684, 120), C_PANEL, C_LINE)
-	var fw = ota.firmware_name if ota.firmware_name != "" else _t("no_firmware")
-	var meta = _t("copy_firmware")
-	if ota.firmware_size > 0:
-		meta = "Size %.1f KB  MD5 %s..." % [float(ota.firmware_size) / 1024.0, ota.firmware_md5.substr(0, 16)]
-	_draw_text(_t("firmware_update") % [fw, meta], 36, 154, C_ACCENT, 12)
-	var upload_rect = Rect2(36, 206, 650, 36)
-	draw_rect(upload_rect, C_INPUT, true)
-	draw_rect(upload_rect, C_LINE, false, 1.0)
-	_draw_text(_t("ota_upload_panel"), upload_rect.position.x + 12, upload_rect.position.y + 9, C_TEXT, 13)
-	_draw_text(_t("ota_upload_hint"), upload_rect.position.x + 338, upload_rect.position.y + 9, C_DIM, 11)
-	if int(selected[2]) == 0:
-		draw_rect(upload_rect, C_ACCENT, false, 2.0)
-		draw_rect(Rect2(upload_rect.position.x, upload_rect.position.y, 5, upload_rect.size.y), C_ACCENT, true)
-
-	var ota_rail_selection = int(selected[2]) - 1
-	_draw_action_rail(Rect2(18, 284, 260, 226), _texts(OTA_ITEM_KEYS.slice(1, 5)), ota_rail_selection)
-	_draw_panel(Rect2(300, 284, 402, 226), C_PANEL, C_LINE)
-	_draw_text(_t("transfer_state") % ota.state.to_upper(), 318, 306, C_TEXT, 11)
-	_draw_progress_bar(Rect2(318, 382, 360, 30), ota.progress, "%d%%  %.1f KB/s" % [ota.progress, ota.speed_kbps])
-	_draw_text(_t("target_dongle"), 318, 446, C_TEXT, 11)
-
-	_draw_panel(Rect2(18, 548, 684, 92), C_INPUT, C_LINE)
-	var log_head = _t("ota_log")
-	if not ota.log.is_empty():
-		log_head = _t("ota_log_line") % ota.log.back()
-	_draw_text(log_head, 36, 568, C_TEXT, 11)
+	OtaScreen.draw(self, font, Callable(self, "_t"), ota, OTA_ITEM_KEYS, int(selected[2]))
 
 
 func _draw_can_page() -> void:
