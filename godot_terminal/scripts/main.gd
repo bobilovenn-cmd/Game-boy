@@ -14,6 +14,7 @@ const AppSettings = preload("res://scripts/settings.gd")  # 全局配置
 const Protocol = preload("res://scripts/protocol.gd")      # 通信协议
 const UdpClient = preload("res://scripts/protocol/udp_client.gd")  # UDP收发
 const MotorController = preload("res://scripts/controllers/motor_controller.gd")  # 电机控制
+const UploadModeController = preload("res://scripts/controllers/upload_mode_controller.gd")  # 固件上传模式
 const MotorDataScript = preload("res://scripts/motor_data.gd")  # 电机数据模型
 const CanLogState = preload("res://scripts/models/can_log_state.gd")  # CAN日志状态
 const OtaState = preload("res://scripts/models/ota_state.gd")  # OTA状态
@@ -58,6 +59,7 @@ var font: Font                              # 当前字体
 var udp_client = UdpClient.new()            # UDP通信对象
 var motor = MotorDataScript.new()           # 电机数据实例
 var motor_controller = MotorController.new() # 电机命令控制器
+var upload_mode = UploadModeController.new() # 固件上传模式
 var can_log = CanLogState.new()             # CAN日志状态
 var ota = OtaState.new()                    # OTA升级状态
 var status = StatusState.new()              # 状态提示
@@ -86,14 +88,6 @@ var result_msg = ""                         # SDO读取结果
 var last_heartbeat_msec = 0                 # 上次心跳时间
 var last_rx_msec = 0                        # 上次收到数据时间
 var udp_ready = false                       # UDP是否就绪
-
-var upload_mode_open = false                # 是否打开固件上传模式界面
-var upload_mode_state = "dongle"            # dongle/upload
-var upload_network_mode = "wifi"            # wifi/mock
-var upload_ssid = "same_wifi"               # RGB30当前连接的Wi-Fi名称
-var upload_password = ""                    # Wi-Fi方案不显示密码
-var upload_url = "http://RGB30_IP:8080"      # 浏览器上传地址
-var upload_status = ""                      # 上传服务状态提示
 
 ## CAN日志输入状态
 var keyboard_open = false                   # 是否显示虚拟键盘
@@ -196,7 +190,7 @@ func _draw() -> void:
 		_draw_node_select()      # 节点选择界面
 		_draw_status_overlay()
 		return
-	if upload_mode_open:
+	if upload_mode.open:
 		_draw_upload_mode_page() # 固件上传模式独立页面
 		_draw_status_overlay()
 		return
@@ -309,7 +303,7 @@ func _handle_action(action: String) -> void:
 	if not node_selected:
 		_handle_node_action(action)
 		return
-	if upload_mode_open:
+	if upload_mode.open:
 		_handle_upload_mode_action(action)
 		return
 	if keyboard_open:
@@ -509,17 +503,12 @@ func _confirm_current_selection() -> void:
 
 
 func _open_upload_mode() -> void:
-	upload_mode_open = true
-	upload_mode_state = "upload"
-	upload_status = _t("upload_starting")
+	upload_mode.open_upload(AppSettings.UPLOAD_MODE_SCRIPT, _t("upload_starting"), _t("upload_script_missing"), _t("upload_ready"))
 	_set_status(_t("upload_starting"))
-	_start_upload_service()
 
 
 func _close_upload_mode() -> void:
-	_stop_upload_service()
-	upload_mode_open = false
-	upload_mode_state = "dongle"
+	upload_mode.close_upload(AppSettings.UPLOAD_MODE_SCRIPT)
 	if FileAccess.file_exists("/storage/firmware.bin"):
 		_load_default_firmware()
 	_set_status(_t("upload_restore_status"))
@@ -529,52 +518,6 @@ func _handle_upload_mode_action(action: String) -> void:
 	match action:
 		"confirm", "back", "language_select":
 			_close_upload_mode()
-
-
-func _start_upload_service() -> void:
-	if not FileAccess.file_exists(AppSettings.UPLOAD_MODE_SCRIPT):
-		upload_network_mode = "mock"
-		upload_ssid = "same_wifi"
-		upload_password = ""
-		upload_url = "http://RGB30_IP:8080"
-		upload_status = _t("upload_script_missing")
-		return
-	var output: Array = []
-	var code = OS.execute("/bin/sh", [AppSettings.UPLOAD_MODE_SCRIPT, "start"], output, true, false)
-	var line = "\n".join(output).strip_edges()
-	_apply_upload_service_output(line)
-	if code == 0:
-		upload_status = _t("upload_ready")
-	else:
-		upload_status = "start failed: %d" % code
-
-
-func _stop_upload_service() -> void:
-	if not FileAccess.file_exists(AppSettings.UPLOAD_MODE_SCRIPT):
-		return
-	var output: Array = []
-	OS.execute("/bin/sh", [AppSettings.UPLOAD_MODE_SCRIPT, "stop"], output, true, false)
-
-
-func _apply_upload_service_output(line: String) -> void:
-	var parts = line.split(" ", false)
-	for part in parts:
-		var eq = part.find("=")
-		if eq <= 0:
-			continue
-		var key = part.substr(0, eq)
-		var value = part.substr(eq + 1)
-		match key:
-			"mode":
-				upload_network_mode = value
-			"ssid":
-				if value != "":
-					upload_ssid = value
-			"password":
-				upload_password = value
-			"url":
-				if value != "":
-					upload_url = value
 
 
 func _open_numeric_input(kind: String) -> void:
@@ -1067,10 +1010,10 @@ func _draw_upload_mode_page() -> void:
 	_draw_text(_t("upload_title"), rect.position.x + 28, rect.position.y + 30, C_TEXT, 24)
 	_draw_text(_t("upload_subtitle"), rect.position.x + 28, rect.position.y + 82, C_TEXT, 15)
 
-	_draw_upload_value_section(_t("upload_wifi"), upload_ssid, 160, 21)
-	_draw_upload_value_section(_t("upload_url"), upload_url, 264, 17)
+	_draw_upload_value_section(_t("upload_wifi"), upload_mode.ssid, 160, 21)
+	_draw_upload_value_section(_t("upload_url"), upload_mode.url, 264, 17)
 	_draw_upload_value_section(_t("upload_save_path"), "/storage/firmware.bin", 368, 17)
-	_draw_text(_t("upload_status") + ": " + upload_status, 170, 510, C_TEXT, 14)
+	_draw_text(_t("upload_status") + ": " + upload_mode.status, 170, 510, C_TEXT, 14)
 
 	var exit_rect = Rect2(128, 598, 464, 52)
 	draw_rect(exit_rect, C_INPUT, true)
@@ -1089,14 +1032,6 @@ func _draw_upload_value_section(title: String, value: String, y: float, value_si
 	draw_rect(value_rect, C_BG, true)
 	draw_rect(value_rect, C_BG_2, false, 1.0)
 	_draw_text(value, value_rect.position.x, value_rect.position.y + 13, C_TEXT, value_size, HORIZONTAL_ALIGNMENT_CENTER, value_rect.size.x)
-
-
-func _upload_mode_display() -> String:
-	if upload_network_mode == "wifi":
-		return "WIFI"
-	if upload_network_mode == "mock":
-		return "UI ONLY"
-	return upload_network_mode.to_upper()
 
 
 func _draw_numeric_input_page() -> void:
@@ -1401,4 +1336,3 @@ func _state_color() -> Color:
 
 func _hex(value: int, width: int = 4) -> String:
 	return ("%X" % value).pad_zeros(width)
-
