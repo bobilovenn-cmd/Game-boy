@@ -16,6 +16,7 @@ const UdpClient = preload("res://scripts/protocol/udp_client.gd")  # UDP收发
 const CanLogFormatter = preload("res://scripts/protocol/can_log_formatter.gd")  # CAN日志格式化
 const MotorController = preload("res://scripts/controllers/motor_controller.gd")  # 电机控制
 const UploadModeController = preload("res://scripts/controllers/upload_mode_controller.gd")  # 固件上传模式
+const NodeSelectorController = preload("res://scripts/controllers/node_selector_controller.gd")  # 节点选择
 const MotorDataScript = preload("res://scripts/motor_data.gd")  # 电机数据模型
 const CanLogState = preload("res://scripts/models/can_log_state.gd")  # CAN日志状态
 const OtaState = preload("res://scripts/models/ota_state.gd")  # OTA状态
@@ -61,6 +62,7 @@ var udp_client = UdpClient.new()            # UDP通信对象
 var motor = MotorDataScript.new()           # 电机数据实例
 var motor_controller = MotorController.new() # 电机命令控制器
 var upload_mode = UploadModeController.new() # 固件上传模式
+var node_selector = NodeSelectorController.new() # 节点选择控制器
 var can_log = CanLogState.new()             # CAN日志状态
 var ota = OtaState.new()                    # OTA升级状态
 var status = StatusState.new()              # 状态提示
@@ -74,10 +76,6 @@ var ui_lang = UiText.LANG_ZH               # 当前界面语言
 ## 节点选择状态
 var node_selected = false                   # 是否已选择电机节点
 var selected_node_id = AppSettings.DEFAULT_NODE_ID  # 当前控制节点
-var node_input = ""                         # 节点输入框内容
-var node_key_row = 0                        # 节点数字键盘选中行
-var node_key_col = 0                        # 节点数字键盘选中列
-var node_error_msg = ""                     # 节点输入错误提示
 
 ## 页面导航状态
 var current_tab = 0                         # 当前页面(0=监控, 1=配置, 2=OTA, 3=CAN日志)
@@ -375,56 +373,21 @@ func _handle_language_action(action: String) -> void:
 			else:
 				language_selected = true
 				node_selected = false
-				node_input = ""
-				node_error_msg = ""
-				node_key_row = 0
-				node_key_col = 0
+				node_selector.reset()
 				ui_lang = LANGUAGE_OPTIONS[selected_language]
 				_set_status("LANGUAGE %s" % ui_lang.to_upper())
 
 
 func _handle_node_action(action: String) -> void:
-	match action:
-		"up":
-			node_key_row = max(0, node_key_row - 1)
-			node_key_col = min(node_key_col, NODE_KEY_ROWS[node_key_row].size() - 1)
-		"down":
-			node_key_row = min(NODE_KEY_ROWS.size() - 1, node_key_row + 1)
-			node_key_col = min(node_key_col, NODE_KEY_ROWS[node_key_row].size() - 1)
-		"left":
-			node_key_col = max(0, node_key_col - 1)
-		"right":
-			node_key_col = min(NODE_KEY_ROWS[node_key_row].size() - 1, node_key_col + 1)
-		"confirm":
-			_apply_node_key(str(NODE_KEY_ROWS[node_key_row][node_key_col]))
-		"back", "language_select":
+	var result = node_selector.handle_action(action, NODE_KEY_ROWS, _t("node_error_empty"), _t("node_error_range"))
+	match str(result.get("event", "")):
+		"back":
 			_return_to_language_select()
+		"selected":
+			_confirm_node_input(int(result.get("node", AppSettings.DEFAULT_NODE_ID)))
 
 
-func _apply_node_key(key: String) -> void:
-	match key:
-		"BACK":
-			_return_to_language_select()
-		"DEL":
-			if node_input.length() > 0:
-				node_input = node_input.substr(0, node_input.length() - 1)
-			node_error_msg = ""
-		"OK":
-			_confirm_node_input()
-		_:
-			if node_input.length() < 3:
-				node_input += key
-			node_error_msg = ""
-
-
-func _confirm_node_input() -> void:
-	if node_input == "" or not node_input.is_valid_int():
-		node_error_msg = _t("node_error_empty")
-		return
-	var value = int(node_input)
-	if value < 1 or value > 127:
-		node_error_msg = _t("node_error_range")
-		return
+func _confirm_node_input(value: int) -> void:
 	selected_node_id = value
 	motor_controller.configure_node(selected_node_id)
 	node_selected = true
@@ -433,7 +396,7 @@ func _confirm_node_input() -> void:
 	motor = MotorDataScript.new()
 	last_rx_msec = 0
 	result_msg = ""
-	node_error_msg = ""
+	node_selector.error_msg = ""
 	can_log.clear()
 	_set_status(_t("node_selected_status") % selected_node_id)
 
@@ -443,8 +406,7 @@ func _return_to_language_select() -> void:
 	selected_language = idx if idx >= 0 else 0
 	language_selected = false
 	node_selected = false
-	node_input = ""
-	node_error_msg = ""
+	node_selector.reset()
 	status.clear()
 
 
@@ -790,8 +752,8 @@ func _draw_node_select() -> void:
 	var input_rect = Rect2(180, 198, 360, 58)
 	draw_rect(input_rect, C_INPUT, true)
 	draw_rect(input_rect, C_LINE, false, 1.0)
-	var node_text = node_input if node_input != "" else "--"
-	_draw_text(node_text, input_rect.position.x, input_rect.position.y + 15, C_ACCENT if node_input != "" else C_DIM_2, 22, HORIZONTAL_ALIGNMENT_CENTER, input_rect.size.x)
+	var node_text = node_selector.input if node_selector.input != "" else "--"
+	_draw_text(node_text, input_rect.position.x, input_rect.position.y + 15, C_ACCENT if node_selector.input != "" else C_DIM_2, 22, HORIZONTAL_ALIGNMENT_CENTER, input_rect.size.x)
 
 	var key_w = 106.0
 	var key_h = 42.0
@@ -808,23 +770,23 @@ func _draw_node_select() -> void:
 			_draw_text(str(row[col_index]), r.position.x, r.position.y + 11, C_TEXT, 14, HORIZONTAL_ALIGNMENT_CENTER, r.size.x)
 		y += key_h + gap
 
-	var selected_row: Array = NODE_KEY_ROWS[node_key_row]
+	var selected_row: Array = NODE_KEY_ROWS[node_selector.key_row]
 	var selected_row_w = float(selected_row.size()) * key_w + float(selected_row.size() - 1) * gap
-	var selected_x = 360.0 - selected_row_w * 0.5 + node_key_col * (key_w + gap)
-	var selected_y = 292.0 + node_key_row * (key_h + gap)
+	var selected_x = 360.0 - selected_row_w * 0.5 + node_selector.key_col * (key_w + gap)
+	var selected_y = 292.0 + node_selector.key_row * (key_h + gap)
 	var selected_rect = Rect2(selected_x, selected_y, key_w, key_h)
-	var selected_key = str(NODE_KEY_ROWS[node_key_row][node_key_col])
+	var selected_key = str(NODE_KEY_ROWS[node_selector.key_row][node_selector.key_col])
 	var selected_color = C_WARN if selected_key == "BACK" else C_ACCENT
 	draw_rect(selected_rect, selected_color, false, 2.0)
 	draw_rect(Rect2(selected_rect.position.x, selected_rect.position.y, 5, selected_rect.size.y), selected_color, true)
 
 	_draw_panel(Rect2(78, 626, 564, 42), C_INPUT, C_LINE)
 	_draw_text(_t("node_hint"), 78, 637, C_DIM, 12, HORIZONTAL_ALIGNMENT_CENTER, 564)
-	if node_error_msg != "":
+	if node_selector.error_msg != "":
 		var err_rect = Rect2(178, 678, 364, 30)
 		draw_rect(err_rect, Color(C_RED, 0.15), true)
 		draw_rect(err_rect, C_RED, false, 1.0)
-		_draw_text(node_error_msg, err_rect.position.x, err_rect.position.y + 7, C_RED, 13, HORIZONTAL_ALIGNMENT_CENTER, err_rect.size.x)
+		_draw_text(node_selector.error_msg, err_rect.position.x, err_rect.position.y + 7, C_RED, 13, HORIZONTAL_ALIGNMENT_CENTER, err_rect.size.x)
 
 
 func _draw_header() -> void:
