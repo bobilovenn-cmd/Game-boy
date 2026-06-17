@@ -16,6 +16,7 @@ const UdpClient = preload("res://scripts/protocol/udp_client.gd")  # UDP收发
 const MotorController = preload("res://scripts/controllers/motor_controller.gd")  # 电机控制
 const MotorDataScript = preload("res://scripts/motor_data.gd")  # 电机数据模型
 const CanLogState = preload("res://scripts/models/can_log_state.gd")  # CAN日志状态
+const OtaState = preload("res://scripts/models/ota_state.gd")  # OTA状态
 const UiText = preload("res://scripts/ui_text.gd")          # 国际化文本
 const UiTheme = preload("res://scripts/theme/ui_theme.gd")   # UI主题色
 const UiConfig = preload("res://scripts/app/ui_config.gd")   # UI页面配置
@@ -56,6 +57,7 @@ var udp_client = UdpClient.new()            # UDP通信对象
 var motor = MotorDataScript.new()           # 电机数据实例
 var motor_controller = MotorController.new() # 电机命令控制器
 var can_log = CanLogState.new()             # CAN日志状态
+var ota = OtaState.new()                    # OTA升级状态
 
 ## 语言选择状态
 var language_selected = false               # 是否已选择语言
@@ -85,19 +87,6 @@ var last_heartbeat_msec = 0                 # 上次心跳时间
 var last_rx_msec = 0                        # 上次收到数据时间
 var udp_ready = false                       # UDP是否就绪
 
-## OTA固件升级状态
-var firmware_data = PackedByteArray()       # 固件二进制数据
-var firmware_md5 = ""                       # 固件MD5校验值
-var firmware_name = ""                      # 固件文件名
-var firmware_size = 0                       # 固件大小(字节)
-var ota_state = "idle"                      # OTA状态(idle/ready/sending/verify/done/error)
-var ota_progress = 0                        # 传输进度(0-100)
-var ota_speed_kbps = 0.0                    # 传输速度(KB/s)
-var ota_log: Array[String] = []             # OTA日志队列
-var ota_offset = 0                          # 当前传输偏移量
-var ota_started = false                     # 是否已发送ota_start命令
-var ota_start_msec = 0                      # 传输开始时间
-var last_ota_send_msec = 0                  # 上次发送数据块时间
 var upload_mode_open = false                # 是否打开固件上传模式界面
 var upload_mode_state = "dongle"            # dongle/upload
 var upload_network_mode = "wifi"            # wifi/mock
@@ -868,15 +857,7 @@ func _handle_sdo_result(data: Dictionary) -> void:
 
 func _handle_ota_status(data: Dictionary) -> void:
 	var state = str(data.get("state", ""))
-	if state == "done":
-		ota_state = "done"
-		ota_progress = 100
-		_log_ota("Flash complete")
-	elif state == "error":
-		ota_state = "error"
-		_log_ota("OTA error")
-	else:
-		_log_ota("OTA: %s" % state)
+	ota.apply_status(state)
 
 
 func _send(message: String, ui_msg: String = "", kind: String = "info") -> bool:
@@ -897,68 +878,48 @@ func _send(message: String, ui_msg: String = "", kind: String = "info") -> bool:
 ## OTA传输状态机 - 每帧调用，按固定间隔发送固件数据块
 ## 流程: ota_start → 分块发送(ota_chunk) → verify → flash
 func _process_ota(now: int) -> void:
-	if ota_state != "sending":
+	if ota.state != "sending":
 		return
 	# 控制发送速率，避免网络拥塞
-	if now - last_ota_send_msec < AppSettings.OTA_SEND_INTERVAL_MS:
+	if now - ota.last_send_msec < AppSettings.OTA_SEND_INTERVAL_MS:
 		return
-	last_ota_send_msec = now
+	ota.last_send_msec = now
 
 	# 第一次发送: 先发ota_start通知固件大小和MD5
-	if not ota_started:
-		_send(Protocol.ota_start(firmware_size, firmware_md5))
-		ota_started = true
+	if not ota.started:
+		_send(Protocol.ota_start(ota.firmware_size, ota.firmware_md5))
+		ota.started = true
 		return
 
 	# 传输完成: 切换到校验状态
-	if ota_offset >= firmware_size:
-		ota_state = "verify"
-		ota_progress = 100
-		_log_ota("Transfer done %.1f KB/s" % ota_speed_kbps)
+	if ota.offset >= ota.firmware_size:
+		ota.mark_transfer_done()
 		return
 
 	# 分块发送: 每次OTA_CHUNK_SIZE字节，Base64编码
-	var end = min(ota_offset + AppSettings.OTA_CHUNK_SIZE, firmware_size)
-	var chunk = firmware_data.slice(ota_offset, end)
-	_send(Protocol.ota_chunk(ota_offset, Marshalls.raw_to_base64(chunk)))
-	ota_offset = end
+	var end = min(ota.offset + AppSettings.OTA_CHUNK_SIZE, ota.firmware_size)
+	var chunk = ota.firmware_data.slice(ota.offset, end)
+	_send(Protocol.ota_chunk(ota.offset, Marshalls.raw_to_base64(chunk)))
+	ota.offset = end
 
 	# 更新进度和速度
-	var elapsed = max(0.001, float(now - ota_start_msec) / 1000.0)
-	ota_progress = int(float(ota_offset) * 100.0 / float(firmware_size))
-	ota_speed_kbps = (float(ota_offset) / 1024.0) / elapsed
+	var elapsed = max(0.001, float(now - ota.start_msec) / 1000.0)
+	ota.progress = int(float(ota.offset) * 100.0 / float(ota.firmware_size))
+	ota.speed_kbps = (float(ota.offset) / 1024.0) / elapsed
 
 
 func _load_default_firmware() -> bool:
-	for path in AppSettings.FIRMWARE_PATHS:
-		if FileAccess.file_exists(path):
-			var bytes = FileAccess.get_file_as_bytes(path)
-			if bytes.is_empty():
-				continue
-			firmware_data = bytes
-			firmware_size = firmware_data.size()
-			firmware_name = path.get_file()
-			firmware_md5 = FileAccess.get_md5(path)
-			ota_state = "ready"
-			ota_progress = 0
-			_log_ota("Loaded %s (%d KB)" % [firmware_name, firmware_size / 1024])
-			_set_status("Firmware loaded")
-			return true
-	_log_ota("No firmware found in /storage")
+	if ota.load_from_paths(AppSettings.FIRMWARE_PATHS):
+		_set_status("Firmware loaded")
+		return true
 	_set_status("No firmware found", "warn")
 	return false
 
 
 func _start_ota_transfer() -> void:
-	if firmware_data.is_empty() and not _load_default_firmware():
+	if ota.firmware_data.is_empty() and not _load_default_firmware():
 		return
-	ota_state = "sending"
-	ota_progress = 0
-	ota_offset = 0
-	ota_started = false
-	ota_start_msec = Time.get_ticks_msec()
-	last_ota_send_msec = 0
-	_log_ota("Starting transfer")
+	ota.start_transfer(Time.get_ticks_msec())
 
 
 func _draw_background() -> void:
@@ -1091,10 +1052,10 @@ func _draw_config_page() -> void:
 
 func _draw_ota_page() -> void:
 	_draw_panel(Rect2(18, 140, 684, 120), C_PANEL, C_LINE)
-	var fw = firmware_name if firmware_name != "" else _t("no_firmware")
+	var fw = ota.firmware_name if ota.firmware_name != "" else _t("no_firmware")
 	var meta = _t("copy_firmware")
-	if firmware_size > 0:
-		meta = "Size %.1f KB  MD5 %s..." % [float(firmware_size) / 1024.0, firmware_md5.substr(0, 16)]
+	if ota.firmware_size > 0:
+		meta = "Size %.1f KB  MD5 %s..." % [float(ota.firmware_size) / 1024.0, ota.firmware_md5.substr(0, 16)]
 	_draw_text(_t("firmware_update") % [fw, meta], 36, 154, C_ACCENT, 12)
 	var upload_rect = Rect2(36, 206, 650, 36)
 	draw_rect(upload_rect, C_INPUT, true)
@@ -1108,14 +1069,14 @@ func _draw_ota_page() -> void:
 	var ota_rail_selection = int(selected[2]) - 1
 	_draw_action_rail(Rect2(18, 284, 260, 226), _texts(OTA_ITEM_KEYS.slice(1, 5)), ota_rail_selection)
 	_draw_panel(Rect2(300, 284, 402, 226), C_PANEL, C_LINE)
-	_draw_text(_t("transfer_state") % ota_state.to_upper(), 318, 306, C_TEXT, 11)
-	_draw_progress_bar(Rect2(318, 382, 360, 30), ota_progress, "%d%%  %.1f KB/s" % [ota_progress, ota_speed_kbps])
+	_draw_text(_t("transfer_state") % ota.state.to_upper(), 318, 306, C_TEXT, 11)
+	_draw_progress_bar(Rect2(318, 382, 360, 30), ota.progress, "%d%%  %.1f KB/s" % [ota.progress, ota.speed_kbps])
 	_draw_text(_t("target_dongle"), 318, 446, C_TEXT, 11)
 
 	_draw_panel(Rect2(18, 548, 684, 92), C_INPUT, C_LINE)
 	var log_head = _t("ota_log")
-	if not ota_log.is_empty():
-		log_head = _t("ota_log_line") % ota_log.back()
+	if not ota.log.is_empty():
+		log_head = _t("ota_log_line") % ota.log.back()
 	_draw_text(log_head, 36, 568, C_TEXT, 11)
 
 
@@ -1483,18 +1444,15 @@ func _set_status(message: String, kind: String = "info") -> void:
 
 
 func _log_ota(message: String) -> void:
-	var ts = Time.get_time_string_from_system()
-	ota_log.append("[%s] %s" % [ts, message])
-	while ota_log.size() > 4:
-		ota_log.pop_front()
+	ota.add_log(message)
 
 
 func _state_color() -> Color:
-	if ota_state == "error":
+	if ota.state == "error":
 		return C_RED
-	if ota_state == "sending" or ota_state == "verify":
+	if ota.state == "sending" or ota.state == "verify":
 		return C_WARN
-	if ota_state == "done" or ota_state == "ready":
+	if ota.state == "done" or ota.state == "ready":
 		return C_ACCENT
 	return C_DIM
 
