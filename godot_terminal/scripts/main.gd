@@ -27,6 +27,8 @@ const UiTheme = preload("res://scripts/theme/ui_theme.gd")   # UI主题色
 const UiConfig = preload("res://scripts/app/ui_config.gd")   # UI页面配置
 const InputMapper = preload("res://scripts/input/input_mapper.gd")  # 按键映射
 const RawInputReader = preload("res://scripts/input/raw_input_reader.gd")  # RGB30原始输入读取
+const LanguageScreen = preload("res://scripts/screens/language_screen.gd")  # 语言选择页
+const NodeSelectScreen = preload("res://scripts/screens/node_select_screen.gd")  # 节点选择页
 
 ## 主题色常量 - 深色科技风格配色方案
 const C_BG = UiTheme.C_BG
@@ -685,67 +687,11 @@ func _draw_background() -> void:
 
 
 func _draw_language_select() -> void:
-	_draw_panel(Rect2(78, 54, 564, 528), C_PANEL, C_LINE)
-	_draw_text(_t("language_title"), 108, 96, C_TEXT, 24)
-	_draw_text(_t("language_subtitle"), 108, 144, C_DIM, 14)
-	var labels = [_t("language_zh"), _t("language_en"), _t("language_shutdown")]
-	for i in labels.size():
-		var rect = Rect2(128, 200 + i * 74, 464, 52)
-		draw_rect(rect, C_INPUT, true)
-		draw_rect(rect, C_LINE, false, 1.0)
-		var is_back = i == 2
-		_draw_text(labels[i], rect.position.x, rect.position.y + 15, C_DIM if is_back else C_TEXT, 17, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x)
-	var selected_rect = Rect2(128, 200 + selected_language * 74, 464, 52)
-	draw_rect(selected_rect, C_WARN if selected_language == 2 else C_ACCENT, false, 2.0)
-	draw_rect(Rect2(selected_rect.position.x, selected_rect.position.y, 6, selected_rect.size.y), C_WARN if selected_language == 2 else C_ACCENT, true)
-	_draw_panel(Rect2(78, 610, 564, 48), C_INPUT, C_LINE)
-	_draw_text(_t("language_hint"), 78, 626, C_DIM, 14, HORIZONTAL_ALIGNMENT_CENTER, 564)
+	LanguageScreen.draw(self, font, Callable(self, "_t"), selected_language)
 
 
 func _draw_node_select() -> void:
-	_draw_panel(Rect2(78, 54, 564, 548), C_PANEL, C_LINE)
-	_draw_text(_t("node_title"), 108, 92, C_TEXT, 24)
-	_draw_text(_t("node_subtitle"), 108, 138, C_DIM, 14)
-	_draw_text(_t("node_range"), 108, 164, C_DIM_2, 12)
-
-	var input_rect = Rect2(180, 198, 360, 58)
-	draw_rect(input_rect, C_INPUT, true)
-	draw_rect(input_rect, C_LINE, false, 1.0)
-	var node_text = node_selector.input if node_selector.input != "" else "--"
-	_draw_text(node_text, input_rect.position.x, input_rect.position.y + 15, C_ACCENT if node_selector.input != "" else C_DIM_2, 22, HORIZONTAL_ALIGNMENT_CENTER, input_rect.size.x)
-
-	var key_w = 106.0
-	var key_h = 42.0
-	var gap = 12.0
-	var y = 292.0
-	for row_index in NODE_KEY_ROWS.size():
-		var row: Array = NODE_KEY_ROWS[row_index]
-		var row_w = float(row.size()) * key_w + float(row.size() - 1) * gap
-		var x = 360.0 - row_w * 0.5
-		for col_index in row.size():
-			var r = Rect2(x + col_index * (key_w + gap), y, key_w, key_h)
-			draw_rect(r, C_INPUT, true)
-			draw_rect(r, C_LINE, false, 1.0)
-			_draw_text(str(row[col_index]), r.position.x, r.position.y + 11, C_TEXT, 14, HORIZONTAL_ALIGNMENT_CENTER, r.size.x)
-		y += key_h + gap
-
-	var selected_row: Array = NODE_KEY_ROWS[node_selector.key_row]
-	var selected_row_w = float(selected_row.size()) * key_w + float(selected_row.size() - 1) * gap
-	var selected_x = 360.0 - selected_row_w * 0.5 + node_selector.key_col * (key_w + gap)
-	var selected_y = 292.0 + node_selector.key_row * (key_h + gap)
-	var selected_rect = Rect2(selected_x, selected_y, key_w, key_h)
-	var selected_key = str(NODE_KEY_ROWS[node_selector.key_row][node_selector.key_col])
-	var selected_color = C_WARN if selected_key == "BACK" else C_ACCENT
-	draw_rect(selected_rect, selected_color, false, 2.0)
-	draw_rect(Rect2(selected_rect.position.x, selected_rect.position.y, 5, selected_rect.size.y), selected_color, true)
-
-	_draw_panel(Rect2(78, 626, 564, 42), C_INPUT, C_LINE)
-	_draw_text(_t("node_hint"), 78, 637, C_DIM, 12, HORIZONTAL_ALIGNMENT_CENTER, 564)
-	if node_selector.error_msg != "":
-		var err_rect = Rect2(178, 678, 364, 30)
-		draw_rect(err_rect, Color(C_RED, 0.15), true)
-		draw_rect(err_rect, C_RED, false, 1.0)
-		_draw_text(node_selector.error_msg, err_rect.position.x, err_rect.position.y + 7, C_RED, 13, HORIZONTAL_ALIGNMENT_CENTER, err_rect.size.x)
+	NodeSelectScreen.draw(self, font, Callable(self, "_t"), NODE_KEY_ROWS, node_selector)
 
 
 func _draw_header() -> void:
