@@ -26,37 +26,19 @@ const CanLogState = preload("res://scripts/models/can_log_state.gd")  # CAN日�
 const OtaState = preload("res://scripts/models/ota_state.gd")  # OTA状态
 const StatusState = preload("res://scripts/models/status_state.gd")  # 状态提示
 const UiText = preload("res://scripts/ui_text.gd")          # 国际化文本
-const UiTheme = preload("res://scripts/theme/ui_theme.gd")   # UI主题色
 const UiConfig = preload("res://scripts/app/ui_config.gd")   # UI页面配置
 const InputMapper = preload("res://scripts/input/input_mapper.gd")  # 按键映射
 const RawInputReader = preload("res://scripts/input/raw_input_reader.gd")  # RGB30原始输入读取
 const LanguageScreen = preload("res://scripts/screens/language_screen.gd")  # 语言选择页
 const NodeSelectScreen = preload("res://scripts/screens/node_select_screen.gd")  # 节点选择页
 const UploadModeScreen = preload("res://scripts/screens/upload_mode_screen.gd")  # 固件上传模式页
+const AppChrome = preload("res://scripts/screens/app_chrome.gd")  # UI外壳
 const MonitorScreen = preload("res://scripts/screens/monitor_screen.gd")  # 监控页
 const ConfigScreen = preload("res://scripts/screens/config_screen.gd")  # 配置页
 const OtaScreen = preload("res://scripts/screens/ota_screen.gd")  # 固件升级页
 const CanScreen = preload("res://scripts/screens/can_screen.gd")  # CAN日志页
 const NumericInputScreen = preload("res://scripts/screens/numeric_input_screen.gd")  # 数字输入页
 const FilterInputScreen = preload("res://scripts/screens/filter_input_screen.gd")  # CAN过滤键盘页
-
-## 主题色常量 - 深色科技风格配色方案
-const C_BG = UiTheme.C_BG
-const C_BG_2 = UiTheme.C_BG_2
-const C_PANEL = UiTheme.C_PANEL
-const C_PANEL_2 = UiTheme.C_PANEL_2
-const C_INPUT = UiTheme.C_INPUT
-const C_LINE = UiTheme.C_LINE
-const C_GRID = UiTheme.C_GRID
-const C_TEXT = UiTheme.C_TEXT
-const C_DIM = UiTheme.C_DIM
-const C_DIM_2 = UiTheme.C_DIM_2
-const C_ACCENT = UiTheme.C_ACCENT
-const C_ACCENT_2 = UiTheme.C_ACCENT_2
-const C_WARN = UiTheme.C_WARN
-const C_RED = UiTheme.C_RED
-const C_GREEN = UiTheme.C_GREEN
-const C_BLACK = UiTheme.C_BLACK
 
 ## UI配置常量
 const LANGUAGE_OPTIONS = UiConfig.LANGUAGE_OPTIONS  # 支持的语言列表
@@ -620,13 +602,7 @@ func _start_ota_transfer() -> void:
 
 
 func _draw_background() -> void:
-	draw_rect(Rect2(0, 0, 720, 720), C_BG, true)
-	for y in range(0, 720, 24):
-		draw_line(Vector2(0, y), Vector2(720, y), Color(C_GRID, 0.22), 1.0)
-	for x in range(0, 720, 24):
-		draw_line(Vector2(x, 0), Vector2(x, 720), Color(C_GRID, 0.12), 1.0)
-	draw_circle(Vector2(610, 90), 150, Color(C_ACCENT_2, 0.055))
-	draw_circle(Vector2(110, 660), 170, Color(C_ACCENT, 0.045))
+	AppChrome.draw_background(self)
 
 
 func _draw_language_select() -> void:
@@ -638,26 +614,11 @@ func _draw_node_select() -> void:
 
 
 func _draw_header() -> void:
-	_draw_panel(Rect2(14, 12, 692, 64), C_PANEL, C_LINE)
-	_draw_text(_t("app_title"), 30, 28, C_TEXT, 20)
-	var link = motor.alive or (last_rx_msec > 0 and Time.get_ticks_msec() - last_rx_msec <= 1500)
-	_draw_status_chip(Rect2(505, 23, 84, 24), "LINK", link)
-	_draw_status_chip(Rect2(598, 23, 84, 24), "UDP", udp_ready)
-	_draw_text("%d ms" % AppSettings.HEARTBEAT_INTERVAL_MS, 622, 56, C_DIM, 10)
-	_draw_text(_t("header_subtitle") % selected_node_id, 32, 56, C_TEXT, 10)
+	AppChrome.draw_header(self, font, Callable(self, "_t"), motor, last_rx_msec, udp_ready, selected_node_id)
 
 
 func _draw_tabs() -> void:
-	var gap = 14.0
-	var tab_w = (684.0 - gap * float(TAB_KEYS.size() - 1)) / float(TAB_KEYS.size())
-	var x = 18.0
-	for i in TAB_KEYS.size():
-		var rect = Rect2(x, 88, tab_w, 38)
-		var active = i == navigation.current_tab
-		draw_rect(rect, C_ACCENT if active else C_PANEL_2, true)
-		draw_rect(rect, C_ACCENT if active else C_LINE, false, 1.0)
-		_draw_text(_tab_name(i), rect.position.x, rect.position.y + 10, C_TEXT, 12, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x)
-		x += tab_w + gap
+	AppChrome.draw_tabs(self, font, TAB_KEYS, navigation.current_tab, Callable(self, "_tab_name"))
 
 
 func _draw_monitor_page() -> void:
@@ -689,44 +650,11 @@ func _draw_filter_input_page() -> void:
 
 
 func _draw_status_overlay() -> void:
-	if not status.is_visible():
-		return
-	var color = C_ACCENT
-	if status.kind == "warn":
-		color = C_WARN
-	elif status.kind == "error":
-		color = C_RED
-	var rect = Rect2(110, 622, 500, 42)
-	draw_rect(rect, Color(C_INPUT, 0.96), true)
-	draw_rect(rect, color, false, 2.0)
-	_draw_text(status.message, rect.position.x, rect.position.y + 13, color, 14, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x)
+	AppChrome.draw_status_overlay(self, font, status)
 
 
 func _draw_footer() -> void:
-	_draw_panel(Rect2(14, 670, 692, 36), C_PANEL, C_LINE)
-	_draw_text(_t("footer"), 24, 681, C_DIM, 12)
-
-
-func _draw_status_chip(rect: Rect2, label: String, ok: bool) -> void:
-	var color = C_GREEN if ok else C_RED
-	draw_rect(rect, Color(color, 0.18), true)
-	draw_rect(rect, color, false, 1.0)
-	_draw_text(label, rect.position.x, rect.position.y + 7, color, 10, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x)
-
-
-func _draw_panel(rect: Rect2, fill: Color, border: Color) -> void:
-	draw_rect(rect, fill, true)
-	draw_rect(rect, border, false, 1.0)
-	draw_line(rect.position, rect.position + Vector2(18, 0), C_ACCENT, 2.0)
-	draw_line(rect.position, rect.position + Vector2(0, 18), C_ACCENT, 2.0)
-	draw_line(Vector2(rect.end.x, rect.position.y), Vector2(rect.end.x - 18, rect.position.y), C_ACCENT_2, 2.0)
-	draw_line(Vector2(rect.end.x, rect.position.y), Vector2(rect.end.x, rect.position.y + 18), C_ACCENT_2, 2.0)
-
-
-func _draw_text(text: String, x: float, y: float, color: Color, font_size: int = 16, align: HorizontalAlignment = HORIZONTAL_ALIGNMENT_LEFT, width: float = -1.0) -> void:
-	if font == null:
-		return
-	draw_string(font, Vector2(x, y + font_size), text, align, width, font_size, color)
+	AppChrome.draw_footer(self, font, Callable(self, "_t"))
 
 
 func _t(key: String) -> String:
