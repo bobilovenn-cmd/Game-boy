@@ -752,25 +752,6 @@ func _draw_filter_input_page() -> void:
 	FilterInputScreen.draw(self, font, Callable(self, "_t"), can_log.filter, KEYBOARD_ROWS, keyboard_row, keyboard_col, keyboard_lowercase, get_viewport_rect().size)
 
 
-func _draw_action_rail(rect: Rect2, items: Array, selected_index: int) -> void:
-	_draw_panel(rect, C_PANEL, C_LINE)
-	_draw_text(_t("commands"), rect.position.x + 18, rect.position.y + 18, C_DIM, 14)
-	var gap = 8.0
-	var row_h = min(38.0, (rect.size.y - 58.0 - gap * float(max(items.size() - 1, 0))) / float(max(items.size(), 1)))
-	var y = rect.position.y + 48
-	for i in items.size():
-		var is_sel = i == selected_index
-		var r = Rect2(rect.position.x + 14, y, rect.size.x - 28, row_h)
-		draw_rect(r, C_INPUT, true)
-		draw_rect(r, C_LINE, false, 1.0)
-		_draw_text(items[i], r.position.x, r.position.y + max(7, int((row_h - 18) * 0.5)), C_TEXT, 14, HORIZONTAL_ALIGNMENT_CENTER, r.size.x)
-		y += row_h + gap
-	if selected_index >= 0 and selected_index < items.size():
-		var selected_rect = Rect2(rect.position.x + 14, rect.position.y + 48 + selected_index * (row_h + gap), rect.size.x - 28, row_h)
-		draw_rect(selected_rect, C_ACCENT, false, 2.0)
-		draw_rect(Rect2(selected_rect.position.x, selected_rect.position.y, 5, selected_rect.size.y), C_ACCENT, true)
-
-
 func _draw_status_overlay() -> void:
 	if not status.is_visible():
 		return
@@ -806,15 +787,6 @@ func _draw_panel(rect: Rect2, fill: Color, border: Color) -> void:
 	draw_line(Vector2(rect.end.x, rect.position.y), Vector2(rect.end.x, rect.position.y + 18), C_ACCENT_2, 2.0)
 
 
-func _draw_progress_bar(rect: Rect2, progress: int, label: String) -> void:
-	draw_rect(rect, C_INPUT, true)
-	var bar_w = (rect.size.x - 4) * clamp(progress, 0, 100) / 100.0
-	if bar_w > 0:
-		draw_rect(Rect2(rect.position.x + 2, rect.position.y + 2, bar_w, rect.size.y - 4), C_ACCENT, true)
-	draw_rect(rect, C_LINE, false, 1.0)
-	_draw_text(label, rect.position.x, rect.position.y + 9, C_TEXT, 11, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x)
-
-
 func _draw_text(text: String, x: float, y: float, color: Color, font_size: int = 16, align: HorizontalAlignment = HORIZONTAL_ALIGNMENT_LEFT, width: float = -1.0) -> void:
 	if font == null:
 		return
@@ -840,21 +812,10 @@ func _can_action_labels() -> Array[String]:
 	return [_t("can_filter"), _t("can_reset"), _t("can_run") if can_log.paused else _t("can_pause")]
 
 
-func _filtered_can_rows() -> Array[Dictionary]:
-	return can_log.filtered_rows()
-
-
 func _keyboard_key_value(row_index: int, col_index: int) -> String:
 	var key = str(KEYBOARD_ROWS[row_index][col_index])
 	if key.length() == 1 and "ABCDEFGHIJKLMNOPQRSTUVWXYZ".contains(key) and keyboard_lowercase:
 		return key.to_lower()
-	return key
-
-
-func _keyboard_key_label(row_index: int, col_index: int) -> String:
-	var key = _keyboard_key_value(row_index, col_index)
-	if key == "SHIFT":
-		return "abc" if not keyboard_lowercase else "ABC"
 	return key
 
 
@@ -864,16 +825,6 @@ func _set_status(message: String, kind: String = "info") -> void:
 
 func _log_ota(message: String) -> void:
 	ota.add_log(message)
-
-
-func _state_color() -> Color:
-	if ota.state == "error":
-		return C_RED
-	if ota.state == "sending" or ota.state == "verify":
-		return C_WARN
-	if ota.state == "done" or ota.state == "ready":
-		return C_ACCENT
-	return C_DIM
 
 
 func _hex(value: int, width: int = 4) -> String:
