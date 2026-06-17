@@ -17,6 +17,7 @@ const MotorController = preload("res://scripts/controllers/motor_controller.gd")
 const MotorDataScript = preload("res://scripts/motor_data.gd")  # 电机数据模型
 const CanLogState = preload("res://scripts/models/can_log_state.gd")  # CAN日志状态
 const OtaState = preload("res://scripts/models/ota_state.gd")  # OTA状态
+const StatusState = preload("res://scripts/models/status_state.gd")  # 状态提示
 const UiText = preload("res://scripts/ui_text.gd")          # 国际化文本
 const UiTheme = preload("res://scripts/theme/ui_theme.gd")   # UI主题色
 const UiConfig = preload("res://scripts/app/ui_config.gd")   # UI页面配置
@@ -58,6 +59,7 @@ var motor = MotorDataScript.new()           # 电机数据实例
 var motor_controller = MotorController.new() # 电机命令控制器
 var can_log = CanLogState.new()             # CAN日志状态
 var ota = OtaState.new()                    # OTA升级状态
+var status = StatusState.new()              # 状态提示
 
 ## 语言选择状态
 var language_selected = false               # 是否已选择语言
@@ -76,10 +78,6 @@ var node_error_msg = ""                     # 节点输入错误提示
 var current_tab = 0                         # 当前页面(0=监控, 1=配置, 2=OTA, 3=CAN日志)
 var selected = [0, 0, 0, 0]                 # 各页面当前选中项索引
 
-## 状态提示
-var status_msg = ""                         # 状态提示文本
-var status_kind = "info"                    # 提示类型(info/warn/error)
-var status_until_msec = 0                   # 提示消失时间戳
 var result_msg = ""                         # SDO读取结果
 
 ## UDP连接状态
@@ -505,8 +503,7 @@ func _return_to_language_select() -> void:
 	node_selected = false
 	node_input = ""
 	node_error_msg = ""
-	status_msg = ""
-	status_until_msec = 0
+	status.clear()
 
 
 func _confirm_current_selection() -> void:
@@ -1351,17 +1348,17 @@ func _draw_live_debug(rect: Rect2) -> void:
 
 
 func _draw_status_overlay() -> void:
-	if status_msg == "" or Time.get_ticks_msec() > status_until_msec:
+	if not status.is_visible():
 		return
 	var color = C_ACCENT
-	if status_kind == "warn":
+	if status.kind == "warn":
 		color = C_WARN
-	elif status_kind == "error":
+	elif status.kind == "error":
 		color = C_RED
 	var rect = Rect2(110, 622, 500, 42)
 	draw_rect(rect, Color(C_INPUT, 0.96), true)
 	draw_rect(rect, color, false, 2.0)
-	_draw_text(status_msg, rect.position.x, rect.position.y + 13, color, 14, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x)
+	_draw_text(status.message, rect.position.x, rect.position.y + 13, color, 14, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x)
 
 
 func _draw_footer() -> void:
@@ -1438,9 +1435,7 @@ func _keyboard_key_label(row_index: int, col_index: int) -> String:
 
 
 func _set_status(message: String, kind: String = "info") -> void:
-	status_msg = message
-	status_kind = kind
-	status_until_msec = Time.get_ticks_msec() + (2600 if kind == "error" else 1800)
+	status.set_message(message, kind)
 
 
 func _log_ota(message: String) -> void:
