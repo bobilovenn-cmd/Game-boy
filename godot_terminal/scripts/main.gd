@@ -29,6 +29,7 @@ const InputMapper = preload("res://scripts/input/input_mapper.gd")  # 按键映�
 const RawInputReader = preload("res://scripts/input/raw_input_reader.gd")  # RGB30原始输入读取
 const LanguageScreen = preload("res://scripts/screens/language_screen.gd")  # 语言选择页
 const NodeSelectScreen = preload("res://scripts/screens/node_select_screen.gd")  # 节点选择页
+const UploadModeScreen = preload("res://scripts/screens/upload_mode_screen.gd")  # 固件上传模式页
 
 ## 主题色常量 - 深色科技风格配色方案
 const C_BG = UiTheme.C_BG
@@ -812,37 +813,7 @@ func _draw_can_page() -> void:
 
 
 func _draw_upload_mode_page() -> void:
-	draw_rect(Rect2(Vector2.ZERO, get_viewport_rect().size), C_BG, true)
-	var rect = Rect2(52, 54, 616, 520)
-	draw_rect(rect, C_BG_2, true)
-	draw_rect(rect, C_ACCENT, false, 2.0)
-	draw_line(rect.position, rect.position + Vector2(28, 0), C_ACCENT, 3.0)
-	draw_line(rect.position, rect.position + Vector2(0, 28), C_ACCENT, 3.0)
-	_draw_text(_t("upload_title"), rect.position.x + 28, rect.position.y + 30, C_TEXT, 24)
-	_draw_text(_t("upload_subtitle"), rect.position.x + 28, rect.position.y + 82, C_TEXT, 15)
-
-	_draw_upload_value_section(_t("upload_wifi"), upload_mode.ssid, 160, 21)
-	_draw_upload_value_section(_t("upload_url"), upload_mode.url, 264, 17)
-	_draw_upload_value_section(_t("upload_save_path"), "/storage/firmware.bin", 368, 17)
-	_draw_text(_t("upload_status") + ": " + upload_mode.status, 170, 510, C_TEXT, 14)
-
-	var exit_rect = Rect2(128, 598, 464, 52)
-	draw_rect(exit_rect, C_INPUT, true)
-	draw_rect(exit_rect, C_LINE, false, 1.0)
-	_draw_text(_t("upload_exit"), exit_rect.position.x, exit_rect.position.y + 15, C_TEXT, 17, HORIZONTAL_ALIGNMENT_CENTER, exit_rect.size.x)
-	draw_rect(exit_rect, C_WARN, false, 2.0)
-	draw_rect(Rect2(exit_rect.position.x, exit_rect.position.y, 6, exit_rect.size.y), C_WARN, true)
-
-
-func _draw_upload_value_section(title: String, value: String, y: float, value_size: int) -> void:
-	var title_rect = Rect2(285, y, 150, 30)
-	draw_rect(title_rect, C_INPUT, true)
-	draw_rect(title_rect, C_LINE, false, 1.0)
-	_draw_text(title, title_rect.position.x, title_rect.position.y + 5, C_TEXT, 17, HORIZONTAL_ALIGNMENT_CENTER, title_rect.size.x)
-	var value_rect = Rect2(170, y + 38, 380, 50)
-	draw_rect(value_rect, C_BG, true)
-	draw_rect(value_rect, C_BG_2, false, 1.0)
-	_draw_text(value, value_rect.position.x, value_rect.position.y + 13, C_TEXT, value_size, HORIZONTAL_ALIGNMENT_CENTER, value_rect.size.x)
+	UploadModeScreen.draw(self, font, Callable(self, "_t"), upload_mode)
 
 
 func _draw_numeric_input_page() -> void:
