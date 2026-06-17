@@ -13,6 +13,7 @@ extends Control
 const AppSettings = preload("res://scripts/settings.gd")  # 全局配置
 const Protocol = preload("res://scripts/protocol.gd")      # 通信协议
 const UdpClient = preload("res://scripts/protocol/udp_client.gd")  # UDP收发
+const MotorController = preload("res://scripts/controllers/motor_controller.gd")  # 电机控制
 const MotorDataScript = preload("res://scripts/motor_data.gd")  # 电机数据模型
 const CanLogState = preload("res://scripts/models/can_log_state.gd")  # CAN日志状态
 const UiText = preload("res://scripts/ui_text.gd")          # 国际化文本
@@ -53,6 +54,7 @@ const NUMERIC_KEY_ROWS = UiConfig.NUMERIC_KEY_ROWS
 var font: Font                              # 当前字体
 var udp_client = UdpClient.new()            # UDP通信对象
 var motor = MotorDataScript.new()           # 电机数据实例
+var motor_controller = MotorController.new() # 电机命令控制器
 var can_log = CanLogState.new()             # CAN日志状态
 
 ## 语言选择状态
@@ -114,7 +116,6 @@ var numeric_input_kind = ""                 # position/speed
 var numeric_input_value = ""                # 输入值
 var numeric_key_row = 0
 var numeric_key_col = 0
-var target_speed_value = 50000              # 正转/反转使用的速度
 
 ## 手柄输入状态 - 使用独立线程读取/dev/input/js0
 var raw_thread: Thread                      # 输入读取线程
@@ -130,6 +131,8 @@ var godot_axis_active = {}                  # fallback 轴输入去抖状态
 
 ## 应用初始化
 func _ready() -> void:
+	motor_controller.configure_node(selected_node_id)
+
 	# 加载打包的CJK字体(支持中英文)，失败则回退到系统字体
 	var cjk_font = ResourceLoader.load("res://fonts/AGV_CJK.ttf", "", ResourceLoader.CACHE_MODE_REUSE)
 	if cjk_font:
@@ -406,19 +409,19 @@ func _handle_action(action: String) -> void:
 		"confirm":
 			_confirm_current_selection()
 		"back":
-			_send(Protocol.jog_stop(selected_node_id), "Jog stopped")
+			_send(motor_controller.jog_stop(), "Jog stopped")
 		"enable":
-			_send(Protocol.enable(selected_node_id), "Enable sent")
+			_send(motor_controller.enable(), "Enable sent")
 		"disable":
-			_send(Protocol.disable(selected_node_id), "Disable sent")
+			_send(motor_controller.disable(), "Disable sent")
 		"estop":
-			_send(Protocol.estop(), "E-STOP sent", "error")
+			_send(motor_controller.estop(), "E-STOP sent", "error")
 		"jog_cw":
-			_send(Protocol.jog_start(selected_node_id, "cw", target_speed_value), "Jog CW %d" % target_speed_value)
+			_send(motor_controller.jog_cw(), "Jog CW %d" % motor_controller.target_speed)
 		"jog_ccw":
-			_send(Protocol.jog_start(selected_node_id, "ccw", target_speed_value), "Jog CCW %d" % target_speed_value)
+			_send(motor_controller.jog_ccw(), "Jog CCW %d" % motor_controller.target_speed)
 		"jog_stop":
-			_send(Protocol.jog_stop(selected_node_id), "Jog stopped")
+			_send(motor_controller.jog_stop(), "Jog stopped")
 		"r2":
 			_set_status("R2 reserved")
 		"stick_press":
@@ -494,6 +497,7 @@ func _confirm_node_input() -> void:
 		node_error_msg = _t("node_error_range")
 		return
 	selected_node_id = value
+	motor_controller.configure_node(selected_node_id)
 	node_selected = true
 	current_tab = 0
 	selected = [0, 0, 0, 0]
@@ -520,15 +524,15 @@ func _confirm_current_selection() -> void:
 	if current_tab == 0:
 		match int(selected[0]):
 			0:
-				_send(Protocol.enable(selected_node_id), "Enable sent")
+				_send(motor_controller.enable(), "Enable sent")
 			1:
-				_send(Protocol.disable(selected_node_id), "Disable sent")
+				_send(motor_controller.disable(), "Disable sent")
 			2:
-				_send(Protocol.estop(), "E-STOP sent", "error")
+				_send(motor_controller.estop(), "E-STOP sent", "error")
 			3:
-				_send(Protocol.jog_start(selected_node_id, "cw", target_speed_value), "Jog CW %d" % target_speed_value)
+				_send(motor_controller.jog_cw(), "Jog CW %d" % motor_controller.target_speed)
 			4:
-				_send(Protocol.jog_start(selected_node_id, "ccw", target_speed_value), "Jog CCW %d" % target_speed_value)
+				_send(motor_controller.jog_ccw(), "Jog CCW %d" % motor_controller.target_speed)
 			5:
 				_open_numeric_input("position")
 			6:
@@ -643,7 +647,7 @@ func _apply_upload_service_output(line: String) -> void:
 func _open_numeric_input(kind: String) -> void:
 	numeric_input_open = true
 	numeric_input_kind = kind
-	numeric_input_value = str(target_speed_value) if kind == "speed" else ""
+	numeric_input_value = str(motor_controller.target_speed) if kind == "speed" else ""
 	numeric_key_row = 0
 	numeric_key_col = 0
 
@@ -700,10 +704,9 @@ func _confirm_numeric_input() -> void:
 		if value < 1 or value > 300000:
 			_set_status(_t("motion_speed_range"), "error")
 			return
-		target_speed_value = value
-		_send(Protocol.set_speed(selected_node_id, target_speed_value), _t("motion_speed_sent") % target_speed_value)
+		_send(motor_controller.set_target_speed(value), _t("motion_speed_sent") % motor_controller.target_speed)
 	else:
-		_send(Protocol.move_position(selected_node_id, value, target_speed_value), _t("motion_position_sent"))
+		_send(motor_controller.move_position(value), _t("motion_position_sent"))
 	numeric_input_open = false
 
 

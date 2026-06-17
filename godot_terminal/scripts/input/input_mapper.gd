@@ -18,8 +18,8 @@ const RGB30_RAW_BUTTONS = {
 }
 
 const GODOT_STANDARD_BUTTONS = {
-	0: "confirm",
-	1: "back",
+	0: "back",
+	1: "confirm",
 	2: "enable",
 	3: "disable",
 	4: "language_select",
