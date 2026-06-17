@@ -13,6 +13,7 @@ extends Control
 const AppSettings = preload("res://scripts/settings.gd")  # 全局配置
 const Protocol = preload("res://scripts/protocol.gd")      # 通信协议
 const UdpClient = preload("res://scripts/protocol/udp_client.gd")  # UDP收发
+const CanLogFormatter = preload("res://scripts/protocol/can_log_formatter.gd")  # CAN日志格式化
 const MotorController = preload("res://scripts/controllers/motor_controller.gd")  # 电机控制
 const UploadModeController = preload("res://scripts/controllers/upload_mode_controller.gd")  # 固件上传模式
 const MotorDataScript = preload("res://scripts/motor_data.gd")  # 电机数据模型
@@ -640,52 +641,9 @@ func _poll_udp() -> void:
 func _record_can_row(raw: String, data: Dictionary) -> void:
 	if can_log.paused:
 		return
-	var cmd = str(data.get("cmd", "packet"))
-	var payload = data
-	if data.has("payload") and typeof(data["payload"]) == TYPE_DICTIONARY:
-		payload = data["payload"]
-	if cmd == "ack" and str(payload.get("msg", "")) == "alive":
+	if not CanLogFormatter.should_record(data):
 		return
-	if cmd == "motor_status":
-		return
-	var summary = _packet_summary(cmd, payload, raw)
-	var line = "%s  %s" % [Time.get_time_string_from_system(), summary]
-	can_log.append_line(line, raw)
-
-
-func _packet_node_label(payload: Dictionary) -> String:
-	var node = _message_node(payload)
-	if node > 0:
-		return "N%d" % node
-	return "ALL"
-
-
-func _packet_summary(cmd: String, payload: Dictionary, raw: String) -> String:
-	var can_id = str(payload.get("can_id", payload.get("id", "")))
-	var dlc = str(payload.get("dlc", ""))
-	var data_bytes = str(payload.get("data", payload.get("bytes", "")))
-	if can_id != "" or data_bytes != "":
-		var id_str = can_id if can_id != "" else "---"
-		var dlc_str = dlc if dlc != "" else str(len(data_bytes) / 3 if data_bytes != "" else "0")
-		return "%s  [%s]  %s" % [id_str, dlc_str, data_bytes]
-	match cmd:
-		"motor_status":
-			return "STATUS I=%sA V=%sV RPM=%s POS=%s T=%s" % [
-				str(payload.get("current", "--")),
-				str(payload.get("voltage", "--")),
-				str(payload.get("speed", "--")),
-				str(payload.get("position", "--")),
-				str(payload.get("torque", "--")),
-			]
-		"ack":
-			return "ack %s %s" % [str(payload.get("status", "")), str(payload.get("msg", ""))]
-		"sdo_read_result":
-			return "sdo_read 0x%s = %s" % [_hex(int(payload.get("index", 0))), str(payload.get("data", ""))]
-		"ota_status":
-			return "ota_status " + str(payload.get("state", ""))
-	if raw.length() > 64:
-		return cmd + " " + raw.substr(0, 64)
-	return cmd + " " + raw
+	can_log.append_line(CanLogFormatter.format_line(raw, data), raw)
 
 
 ## 消息分发处理 - 根据cmd字段路由到对应处理器
