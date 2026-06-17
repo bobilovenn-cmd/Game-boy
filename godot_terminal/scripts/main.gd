@@ -30,6 +30,7 @@ const RawInputReader = preload("res://scripts/input/raw_input_reader.gd")  # RGB
 const LanguageScreen = preload("res://scripts/screens/language_screen.gd")  # 语言选择页
 const NodeSelectScreen = preload("res://scripts/screens/node_select_screen.gd")  # 节点选择页
 const UploadModeScreen = preload("res://scripts/screens/upload_mode_screen.gd")  # 固件上传模式页
+const MonitorScreen = preload("res://scripts/screens/monitor_screen.gd")  # 监控页
 
 ## 主题色常量 - 深色科技风格配色方案
 const C_BG = UiTheme.C_BG
@@ -719,11 +720,7 @@ func _draw_tabs() -> void:
 
 
 func _draw_monitor_page() -> void:
-	_draw_action_rail(Rect2(18, 140, 188, 360), _texts(MONITOR_ITEM_KEYS), int(selected[0]))
-	_draw_telemetry_grid(Rect2(224, 140, 478, 190))
-	_draw_waveform_panel(Rect2(224, 346, 478, 196))
-	_draw_command_matrix(Rect2(18, 516, 188, 88))
-	_draw_live_debug(Rect2(224, 558, 478, 46))
+	MonitorScreen.draw(self, font, Callable(self, "_t"), _texts(MONITOR_ITEM_KEYS), int(selected[0]), motor, raw_input.ok, last_input_label)
 
 
 func _draw_config_page() -> void:
@@ -926,89 +923,6 @@ func _draw_action_rail(rect: Rect2, items: Array, selected_index: int) -> void:
 		var selected_rect = Rect2(rect.position.x + 14, rect.position.y + 48 + selected_index * (row_h + gap), rect.size.x - 28, row_h)
 		draw_rect(selected_rect, C_ACCENT, false, 2.0)
 		draw_rect(Rect2(selected_rect.position.x, selected_rect.position.y, 5, selected_rect.size.y), C_ACCENT, true)
-
-
-func _draw_telemetry_grid(rect: Rect2) -> void:
-	_draw_panel(rect, C_PANEL, C_LINE)
-	_draw_text(_t("telemetry"), rect.position.x + 18, rect.position.y + 18, C_DIM, 14)
-	var cards = [
-		[_t("metric_current"), "%.2f" % motor.current, "A", C_ACCENT],
-		[_t("metric_voltage"), "%.1f" % motor.voltage, "V", C_ACCENT_2],
-		[_t("metric_speed"), "%d" % motor.speed, "rpm", C_WARN],
-		[_t("metric_position"), "%.1f" % motor.position, "deg", C_TEXT],
-		[_t("metric_torque"), "%.2f" % motor.torque, "Nm", C_GREEN],
-		[_t("metric_status"), motor.get_status_text(), "", C_RED if motor.is_fault() else C_GREEN],
-	]
-	var idx = 0
-	for row in 2:
-		for col in 3:
-			var card = cards[idx]
-			var x = rect.position.x + 16 + col * 150
-			var y = rect.position.y + 46 + row * 62
-			_draw_metric_card(Rect2(x, y, 138, 52), card[0], card[1], card[2], card[3])
-			idx += 1
-
-
-func _draw_metric_card(rect: Rect2, label: String, value: String, unit: String, color: Color) -> void:
-	draw_rect(rect, C_INPUT, true)
-	draw_rect(rect, Color(color, 0.75), false, 1.0)
-	_draw_text(label, rect.position.x + 8, rect.position.y + 7, C_DIM, 12)
-	var display_value = value if unit == "" else "%s %s" % [value, unit]
-	_draw_text(display_value, rect.position.x + 8, rect.position.y + 27, color, 12)
-
-
-func _draw_waveform_panel(rect: Rect2) -> void:
-	_draw_panel(rect, C_PANEL, C_LINE)
-	_draw_text(_t("waveform"), rect.position.x + 18, rect.position.y + 18, C_DIM, 14)
-	var plot = Rect2(rect.position.x + 18, rect.position.y + 46, rect.size.x - 36, rect.size.y - 66)
-	draw_rect(plot, C_INPUT, true)
-	for i in range(1, 5):
-		var gy = plot.position.y + plot.size.y * i / 5.0
-		draw_line(Vector2(plot.position.x, gy), Vector2(plot.end.x, gy), Color(C_GRID, 0.55), 1.0)
-	for i in range(1, 7):
-		var gx = plot.position.x + plot.size.x * i / 7.0
-		draw_line(Vector2(gx, plot.position.y), Vector2(gx, plot.end.y), Color(C_GRID, 0.45), 1.0)
-	draw_rect(plot, C_LINE, false, 1.0)
-
-	var vals = motor.speed_history
-	var n = min(vals.size(), 96)
-	if n < 2:
-		_draw_text(_t("waiting_packets"), plot.position.x, plot.position.y + plot.size.y * 0.5 - 8, C_DIM, 15, HORIZONTAL_ALIGNMENT_CENTER, plot.size.x)
-		return
-	var start = vals.size() - n
-	var vmin = vals[start]
-	var vmax = vals[start]
-	for i in range(start, vals.size()):
-		vmin = min(vmin, vals[i])
-		vmax = max(vmax, vals[i])
-	var vrange = vmax - vmin
-	if absf(vrange) < 0.001:
-		vrange = 1.0
-	var points = PackedVector2Array()
-	for i in n:
-		var v: float = vals[start + i]
-		var px = plot.position.x + float(i) * plot.size.x / float(max(n - 1, 1))
-		var py = plot.position.y + plot.size.y - ((v - vmin) / vrange * plot.size.y)
-		points.append(Vector2(px, py))
-	draw_polyline(points, C_ACCENT, 2.0)
-
-
-func _draw_command_matrix(rect: Rect2) -> void:
-	_draw_panel(rect, C_PANEL, C_LINE)
-	_draw_text(_t("hotkeys"), rect.position.x + 14, rect.position.y + 16, C_DIM, 13)
-	_draw_text("X %s" % _t("cmd_enable"), rect.position.x + 14, rect.position.y + 42, C_ACCENT, 13)
-	_draw_text("Y %s" % _t("cmd_disable"), rect.position.x + 96, rect.position.y + 42, C_WARN, 13)
-	_draw_text("L1/R1 JOG", rect.position.x + 14, rect.position.y + 66, C_TEXT, 13)
-	_draw_text("L2 %s" % _t("cmd_estop"), rect.position.x + 96, rect.position.y + 66, C_RED, 13)
-
-
-func _draw_live_debug(rect: Rect2) -> void:
-	_draw_panel(rect, C_INPUT, C_LINE)
-	var input_state = "RAW /dev/input/js0" if raw_input.ok else "GODOT FALLBACK"
-	_draw_text(_t("input"), rect.position.x + 14, rect.position.y + 16, C_DIM, 13)
-	_draw_text(input_state, rect.position.x + 76, rect.position.y + 16, C_ACCENT if raw_input.ok else C_WARN, 13)
-	_draw_text(_t("last"), rect.position.x + 270, rect.position.y + 16, C_DIM, 13)
-	_draw_text(last_input_label, rect.position.x + 314, rect.position.y + 16, C_TEXT, 13)
 
 
 func _draw_status_overlay() -> void:
