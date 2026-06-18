@@ -25,6 +25,7 @@ const OtaTransferController = preload("res://scripts/controllers/ota_transfer_co
 const SessionController = preload("res://scripts/controllers/session_controller.gd")  # 语言和节点会话
 const MotorDataScript = preload("res://scripts/motor_data.gd")  # 电机数据模型
 const CanLogState = preload("res://scripts/models/can_log_state.gd")  # CAN日志状态
+const ConnectionState = preload("res://scripts/models/connection_state.gd")  # UDP连接状态
 const OtaState = preload("res://scripts/models/ota_state.gd")  # OTA状态
 const StatusState = preload("res://scripts/models/status_state.gd")  # 状态提示
 const UiText = preload("res://scripts/ui_text.gd")          # 国际化文本
@@ -68,16 +69,12 @@ var navigation = NavigationController.new()  # 页面导航控制器
 var ota_transfer = OtaTransferController.new() # OTA传输控制器
 var app_session = SessionController.new()    # 语言和节点会话控制器
 var can_log = CanLogState.new()             # CAN日志状态
+var connection = ConnectionState.new()      # UDP连接运行状态
 var ota = OtaState.new()                    # OTA升级状态
 var status = StatusState.new()              # 状态提示
 var raw_input = RawInputReader.new()        # /dev/input/js0读取器
 
 var result_msg = ""                         # SDO读取结果
-
-## UDP连接状态
-var last_heartbeat_msec = 0                 # 上次心跳时间
-var last_rx_msec = 0                        # 上次收到数据时间
-var udp_ready = false                       # UDP是否就绪
 
 ## 手柄输入状态
 var last_input_label = "none"               # 最近按键调试标签
@@ -92,7 +89,7 @@ func _ready() -> void:
 
 	font = AppBootstrap.load_ui_font(self)
 	var udp_result = AppBootstrap.configure_udp(udp_client)
-	udp_ready = bool(udp_result.get("ok", false))
+	connection.set_udp_ready(bool(udp_result.get("ok", false)))
 	_set_status(str(udp_result.get("message", "")), str(udp_result.get("kind", "info")))
 
 	var raw_result = AppBootstrap.start_raw_input(raw_input)
@@ -123,13 +120,11 @@ func _process(_delta: float) -> void:
 	_poll_udp()
 
 	# 定时发送心跳包维持连接
-	if udp_ready and now - last_heartbeat_msec >= AppSettings.HEARTBEAT_INTERVAL_MS:
+	if connection.should_send_heartbeat(now, AppSettings.HEARTBEAT_INTERVAL_MS):
 		_send(Protocol.heartbeat())
-		last_heartbeat_msec = now
 
 	# 超过1.5秒未收到数据则标记电机离线
-	if last_rx_msec > 0 and now - last_rx_msec > 1500:
-		motor.alive = false
+	connection.update_motor_alive(now, motor)
 
 	# 处理OTA传输逻辑
 	_process_ota(now)
@@ -320,7 +315,7 @@ func _confirm_node_input(value: int) -> void:
 	motor_controller.configure_node(app_session.selected_node_id)
 	navigation.reset(TAB_KEYS.size())
 	motor = MotorDataScript.new()
-	last_rx_msec = 0
+	connection.reset_received()
 	result_msg = ""
 	node_selector.error_msg = ""
 	can_log.clear()
@@ -447,7 +442,7 @@ func _handle_filter_input_action(action: String) -> void:
 
 ## 轮询UDP接收缓冲区 - 处理所有待处理的数据包
 func _poll_udp() -> void:
-	if not udp_ready:
+	if not connection.udp_ready:
 		return
 	for raw in udp_client.poll_text_packets():
 		var data = Protocol.parse(raw)  # 解析JSON消息
@@ -465,7 +460,7 @@ func _record_can_row(raw: String, data: Dictionary) -> void:
 
 ## 消息分发处理 - 根据cmd字段路由到对应处理器
 func _handle_message(data: Dictionary) -> void:
-	last_rx_msec = Time.get_ticks_msec()
+	connection.mark_received(Time.get_ticks_msec())
 	var result = message_dispatcher.handle(data, app_session.selected_node_id, motor, ota)
 	if result.has("result_msg"):
 		result_msg = str(result.get("result_msg", ""))
@@ -476,7 +471,7 @@ func _handle_message(data: Dictionary) -> void:
 
 
 func _send(message: String, ui_msg: String = "", kind: String = "info") -> bool:
-	if not udp_ready:
+	if not connection.udp_ready:
 		if ui_msg != "":
 			_set_status("UDP not ready", "error")
 		return false
@@ -522,7 +517,7 @@ func _draw_node_select() -> void:
 
 
 func _draw_header() -> void:
-	AppChrome.draw_header(self, font, Callable(self, "_t"), motor, last_rx_msec, udp_ready, app_session.selected_node_id)
+	AppChrome.draw_header(self, font, Callable(self, "_t"), motor, connection.last_rx_msec, connection.udp_ready, app_session.selected_node_id)
 
 
 func _draw_tabs() -> void:
