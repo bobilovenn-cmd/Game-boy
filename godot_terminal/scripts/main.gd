@@ -9,77 +9,42 @@
 
 extends Control
 
-## 依赖模块加载
-const AppSettings = preload("res://scripts/settings.gd")  # 全局配置
-const Protocol = preload("res://scripts/protocol.gd")      # 通信协议
-const UdpClient = preload("res://scripts/protocol/udp_client.gd")  # UDP收发
-const CanLogFormatter = preload("res://scripts/protocol/can_log_formatter.gd")  # CAN日志格式化
-const MessageDispatcher = preload("res://scripts/protocol/message_dispatcher.gd")  # UDP消息分发
-const MotorController = preload("res://scripts/controllers/motor_controller.gd")  # 电机控制
-const UploadModeController = preload("res://scripts/controllers/upload_mode_controller.gd")  # 固件上传模式
-const NodeSelectorController = preload("res://scripts/controllers/node_selector_controller.gd")  # 节点选择
-const NumericInputController = preload("res://scripts/controllers/numeric_input_controller.gd")  # 数字输入
-const CanFilterController = preload("res://scripts/controllers/can_filter_controller.gd")  # CAN过滤键盘
-const NavigationController = preload("res://scripts/controllers/navigation_controller.gd")  # 页面导航
-const OtaTransferController = preload("res://scripts/controllers/ota_transfer_controller.gd")  # OTA分块传输
-const SessionController = preload("res://scripts/controllers/session_controller.gd")  # 语言和节点会话
-const PageCommandController = preload("res://scripts/controllers/page_command_controller.gd")  # 页面命令分发
-const FirmwareController = preload("res://scripts/controllers/firmware_controller.gd")  # 固件加载工作流
-const GlobalActionController = preload("res://scripts/controllers/global_action_controller.gd")  # 全局快捷键动作
-const MotorDataScript = preload("res://scripts/motor_data.gd")  # 电机数据模型
-const CanLogState = preload("res://scripts/models/can_log_state.gd")  # CAN日志状态
-const ConnectionState = preload("res://scripts/models/connection_state.gd")  # UDP连接状态
-const OtaState = preload("res://scripts/models/ota_state.gd")  # OTA状态
-const StatusState = preload("res://scripts/models/status_state.gd")  # 状态提示
-const UiText = preload("res://scripts/ui_text.gd")          # 国际化文本
-const AppBootstrap = preload("res://scripts/app/app_bootstrap.gd") # 启动初始化
-const UiConfig = preload("res://scripts/app/ui_config.gd")   # UI页面配置
-const InputRouter = preload("res://scripts/input/input_router.gd")  # 输入事件路由
-const RawInputReader = preload("res://scripts/input/raw_input_reader.gd")  # RGB30原始输入读取
-const LanguageScreen = preload("res://scripts/screens/language_screen.gd")  # 语言选择页
-const NodeSelectScreen = preload("res://scripts/screens/node_select_screen.gd")  # 节点选择页
-const UploadModeScreen = preload("res://scripts/screens/upload_mode_screen.gd")  # 固件上传模式页
-const AppChrome = preload("res://scripts/screens/app_chrome.gd")  # UI外壳
-const MonitorScreen = preload("res://scripts/screens/monitor_screen.gd")  # 监控页
-const ConfigScreen = preload("res://scripts/screens/config_screen.gd")  # 配置页
-const OtaScreen = preload("res://scripts/screens/ota_screen.gd")  # 固件升级页
-const CanScreen = preload("res://scripts/screens/can_screen.gd")  # CAN日志页
-const NumericInputScreen = preload("res://scripts/screens/numeric_input_screen.gd")  # 数字输入页
-const FilterInputScreen = preload("res://scripts/screens/filter_input_screen.gd")  # CAN过滤键盘页
+## 集中模块目录：main 只依赖这一个入口
+const Modules = preload("res://scripts/app/app_modules.gd")
 
 ## UI配置常量
-const LANGUAGE_OPTIONS = UiConfig.LANGUAGE_OPTIONS  # 支持的语言列表
-const TAB_KEYS = UiConfig.TAB_KEYS                  # 页面标签
-const MONITOR_ITEM_KEYS = UiConfig.MONITOR_ITEM_KEYS
-const CONFIG_ITEMS = UiConfig.CONFIG_ITEMS
-const OTA_ITEM_KEYS = UiConfig.OTA_ITEM_KEYS
-const CAN_ITEM_KEYS = UiConfig.CAN_ITEM_KEYS
-const NODE_KEY_ROWS = UiConfig.NODE_KEY_ROWS
-const KEYBOARD_ROWS = UiConfig.KEYBOARD_ROWS
-const NUMERIC_KEY_ROWS = UiConfig.NUMERIC_KEY_ROWS
+const LANGUAGE_OPTIONS = Modules.UiConfig.LANGUAGE_OPTIONS  # 支持的语言列表
+const TAB_KEYS = Modules.UiConfig.TAB_KEYS                  # 页面标签
+const MONITOR_ITEM_KEYS = Modules.UiConfig.MONITOR_ITEM_KEYS
+const CONFIG_ITEMS = Modules.UiConfig.CONFIG_ITEMS
+const OTA_ITEM_KEYS = Modules.UiConfig.OTA_ITEM_KEYS
+const CAN_ITEM_KEYS = Modules.UiConfig.CAN_ITEM_KEYS
+const NODE_KEY_ROWS = Modules.UiConfig.NODE_KEY_ROWS
+const KEYBOARD_ROWS = Modules.UiConfig.KEYBOARD_ROWS
+const NUMERIC_KEY_ROWS = Modules.UiConfig.NUMERIC_KEY_ROWS
 
 ## 核心对象
 var font: Font                              # 当前字体
-var udp_client = UdpClient.new()            # UDP通信对象
-var message_dispatcher = MessageDispatcher.new() # UDP消息处理器
-var motor = MotorDataScript.new()           # 电机数据实例
-var motor_controller = MotorController.new() # 电机命令控制器
-var upload_mode = UploadModeController.new() # 固件上传模式
-var node_selector = NodeSelectorController.new() # 节点选择控制器
-var numeric_input = NumericInputController.new() # 数字输入控制器
-var can_filter = CanFilterController.new()   # CAN过滤输入控制器
-var navigation = NavigationController.new()  # 页面导航控制器
-var ota_transfer = OtaTransferController.new() # OTA传输控制器
-var app_session = SessionController.new()    # 语言和节点会话控制器
-var page_commands = PageCommandController.new() # 页面命令控制器
-var firmware_controller = FirmwareController.new() # 固件加载控制器
-var global_actions = GlobalActionController.new() # 全局动作控制器
-var can_log = CanLogState.new()             # CAN日志状态
-var connection = ConnectionState.new()      # UDP连接运行状态
-var ota = OtaState.new()                    # OTA升级状态
-var status = StatusState.new()              # 状态提示
-var raw_input = RawInputReader.new()        # /dev/input/js0读取器
-var input_router = InputRouter.new()        # 统一输入事件路由
+var udp_client = Modules.UdpClient.new()            # UDP通信对象
+var message_dispatcher = Modules.MessageDispatcher.new() # UDP消息处理器
+var motor = Modules.MotorData.new()           # 电机数据实例
+var motor_controller = Modules.MotorController.new() # 电机命令控制器
+var upload_mode = Modules.UploadModeController.new() # 固件上传模式
+var node_selector = Modules.NodeSelectorController.new() # 节点选择控制器
+var numeric_input = Modules.NumericInputController.new() # 数字输入控制器
+var can_filter = Modules.CanFilterController.new()   # CAN过滤输入控制器
+var navigation = Modules.NavigationController.new()  # 页面导航控制器
+var ota_transfer = Modules.OtaTransferController.new() # OTA传输控制器
+var app_session = Modules.SessionController.new()    # 语言和节点会话控制器
+var page_commands = Modules.PageCommandController.new() # 页面命令控制器
+var firmware_controller = Modules.FirmwareController.new() # 固件加载控制器
+var global_actions = Modules.GlobalActionController.new() # 全局动作控制器
+var can_log = Modules.CanLogState.new()             # CAN日志状态
+var connection = Modules.ConnectionState.new()      # UDP连接运行状态
+var ota = Modules.OtaState.new()                    # OTA升级状态
+var status = Modules.StatusState.new()              # 状态提示
+var raw_input = Modules.RawInputReader.new()        # /dev/input/js0读取器
+var input_router = Modules.InputRouter.new()        # 统一输入事件路由
 
 var result_msg = ""                         # SDO读取结果
 
@@ -89,12 +54,12 @@ func _ready() -> void:
 	motor_controller.configure_node(app_session.selected_node_id)
 	navigation.reset(TAB_KEYS.size())
 
-	font = AppBootstrap.load_ui_font(self)
-	var udp_result = AppBootstrap.configure_udp(udp_client)
+	font = Modules.AppBootstrap.load_ui_font(self)
+	var udp_result = Modules.AppBootstrap.configure_udp(udp_client)
 	connection.set_udp_ready(bool(udp_result.get("ok", false)))
 	_set_status(str(udp_result.get("message", "")), str(udp_result.get("kind", "info")))
 
-	var raw_result = AppBootstrap.start_raw_input(raw_input)
+	var raw_result = Modules.AppBootstrap.start_raw_input(raw_input)
 	if not bool(raw_result.get("ok", false)):
 		_set_status(str(raw_result.get("message", "")), str(raw_result.get("kind", "warn")))
 	_log_ota("Godot terminal ready")
@@ -122,8 +87,8 @@ func _process(_delta: float) -> void:
 	_poll_udp()
 
 	# 定时发送心跳包维持连接
-	if connection.should_send_heartbeat(now, AppSettings.HEARTBEAT_INTERVAL_MS):
-		_send(Protocol.heartbeat())
+	if connection.should_send_heartbeat(now, Modules.AppSettings.HEARTBEAT_INTERVAL_MS):
+		_send(Modules.Protocol.heartbeat())
 
 	# 超过1.5秒未收到数据则标记电机离线
 	connection.update_motor_alive(now, motor)
@@ -186,7 +151,7 @@ func _draw() -> void:
 
 func _drain_raw_input() -> void:
 	for raw in raw_input.drain_events():
-		_apply_input_result(input_router.route_raw(raw, RawInputReader.RELEASE_OFFSET))
+		_apply_input_result(input_router.route_raw(raw, Modules.RawInputReader.RELEASE_OFFSET))
 
 
 func _handle_godot_joy_button(button_index: int, pressed: bool) -> void:
@@ -260,7 +225,7 @@ func _handle_node_action(action: String) -> void:
 		"back":
 			_return_to_language_select()
 		"selected":
-			_confirm_node_input(int(result.get("node", AppSettings.DEFAULT_NODE_ID)))
+			_confirm_node_input(int(result.get("node", Modules.AppSettings.DEFAULT_NODE_ID)))
 
 
 func _handle_navigation_action(action: String) -> void:
@@ -285,7 +250,7 @@ func _confirm_node_input(value: int) -> void:
 	app_session.select_node(value)
 	motor_controller.configure_node(app_session.selected_node_id)
 	navigation.reset(TAB_KEYS.size())
-	motor = MotorDataScript.new()
+	motor = Modules.MotorData.new()
 	connection.reset_received()
 	result_msg = ""
 	node_selector.error_msg = ""
@@ -327,9 +292,9 @@ func _apply_page_command(command: Dictionary) -> void:
 		"open_upload":
 			_open_upload_mode()
 		"load_firmware":
-			_apply_firmware_result(firmware_controller.load_default(ota, AppSettings.FIRMWARE_PATHS))
+			_apply_firmware_result(firmware_controller.load_default(ota, Modules.AppSettings.FIRMWARE_PATHS))
 		"start_ota":
-			_apply_firmware_result(firmware_controller.start_transfer(ota, AppSettings.FIRMWARE_PATHS, Time.get_ticks_msec()))
+			_apply_firmware_result(firmware_controller.start_transfer(ota, Modules.AppSettings.FIRMWARE_PATHS, Time.get_ticks_msec()))
 		"open_filter":
 			can_filter.start()
 		"clear_can_log":
@@ -341,14 +306,14 @@ func _apply_page_command(command: Dictionary) -> void:
 
 
 func _open_upload_mode() -> void:
-	upload_mode.open_upload(AppSettings.UPLOAD_MODE_SCRIPT, _t("upload_starting"), _t("upload_script_missing"), _t("upload_ready"))
+	upload_mode.open_upload(Modules.AppSettings.UPLOAD_MODE_SCRIPT, _t("upload_starting"), _t("upload_script_missing"), _t("upload_ready"))
 	_set_status(_t("upload_starting"))
 
 
 func _close_upload_mode() -> void:
-	upload_mode.close_upload(AppSettings.UPLOAD_MODE_SCRIPT)
+	upload_mode.close_upload(Modules.AppSettings.UPLOAD_MODE_SCRIPT)
 	if FileAccess.file_exists("/storage/firmware.bin"):
-		_apply_firmware_result(firmware_controller.load_default(ota, AppSettings.FIRMWARE_PATHS))
+		_apply_firmware_result(firmware_controller.load_default(ota, Modules.AppSettings.FIRMWARE_PATHS))
 	_set_status(_t("upload_restore_status"))
 
 
@@ -402,7 +367,7 @@ func _poll_udp() -> void:
 	if not connection.udp_ready:
 		return
 	for raw in udp_client.poll_text_packets():
-		var data = Protocol.parse(raw)  # 解析JSON消息
+		var data = Modules.Protocol.parse(raw)  # 解析JSON消息
 		_record_can_row(raw, data)
 		_handle_message(data)           # 分发处理
 
@@ -410,9 +375,9 @@ func _poll_udp() -> void:
 func _record_can_row(raw: String, data: Dictionary) -> void:
 	if can_log.paused:
 		return
-	if not CanLogFormatter.should_record(data):
+	if not Modules.CanLogFormatter.should_record(data):
 		return
-	can_log.append_line(CanLogFormatter.format_line(raw, data), raw)
+	can_log.append_line(Modules.CanLogFormatter.format_line(raw, data), raw)
 
 
 ## 消息分发处理 - 根据cmd字段路由到对应处理器
@@ -453,63 +418,63 @@ func _apply_firmware_result(result: Dictionary) -> void:
 
 
 func _draw_background() -> void:
-	AppChrome.draw_background(self)
+	Modules.AppChrome.draw_background(self)
 
 
 func _draw_language_select() -> void:
-	LanguageScreen.draw(self, font, Callable(self, "_t"), app_session.selected_language)
+	Modules.LanguageScreen.draw(self, font, Callable(self, "_t"), app_session.selected_language)
 
 
 func _draw_node_select() -> void:
-	NodeSelectScreen.draw(self, font, Callable(self, "_t"), NODE_KEY_ROWS, node_selector)
+	Modules.NodeSelectScreen.draw(self, font, Callable(self, "_t"), NODE_KEY_ROWS, node_selector)
 
 
 func _draw_header() -> void:
-	AppChrome.draw_header(self, font, Callable(self, "_t"), motor, connection.last_rx_msec, connection.udp_ready, app_session.selected_node_id)
+	Modules.AppChrome.draw_header(self, font, Callable(self, "_t"), motor, connection.last_rx_msec, connection.udp_ready, app_session.selected_node_id)
 
 
 func _draw_tabs() -> void:
-	AppChrome.draw_tabs(self, font, TAB_KEYS, navigation.current_tab, Callable(self, "_tab_name"))
+	Modules.AppChrome.draw_tabs(self, font, TAB_KEYS, navigation.current_tab, Callable(self, "_tab_name"))
 
 
 func _draw_monitor_page() -> void:
-	MonitorScreen.draw(self, font, Callable(self, "_t"), _texts(MONITOR_ITEM_KEYS), navigation.selected_index(0), motor, raw_input.ok, input_router.last_input_label)
+	Modules.MonitorScreen.draw(self, font, Callable(self, "_t"), _texts(MONITOR_ITEM_KEYS), navigation.selected_index(0), motor, raw_input.ok, input_router.last_input_label)
 
 
 func _draw_config_page() -> void:
-	ConfigScreen.draw(self, font, Callable(self, "_t"), CONFIG_ITEMS, navigation.selected_index(1), result_msg)
+	Modules.ConfigScreen.draw(self, font, Callable(self, "_t"), CONFIG_ITEMS, navigation.selected_index(1), result_msg)
 
 
 func _draw_ota_page() -> void:
-	OtaScreen.draw(self, font, Callable(self, "_t"), ota, OTA_ITEM_KEYS, navigation.selected_index(2))
+	Modules.OtaScreen.draw(self, font, Callable(self, "_t"), ota, OTA_ITEM_KEYS, navigation.selected_index(2))
 
 
 func _draw_can_page() -> void:
-	CanScreen.draw(self, font, Callable(self, "_t"), can_log, _can_action_labels(), navigation.selected_index(3))
+	Modules.CanScreen.draw(self, font, Callable(self, "_t"), can_log, _can_action_labels(), navigation.selected_index(3))
 
 
 func _draw_upload_mode_page() -> void:
-	UploadModeScreen.draw(self, font, Callable(self, "_t"), upload_mode)
+	Modules.UploadModeScreen.draw(self, font, Callable(self, "_t"), upload_mode)
 
 
 func _draw_numeric_input_page() -> void:
-	NumericInputScreen.draw(self, font, Callable(self, "_t"), numeric_input, NUMERIC_KEY_ROWS, get_viewport_rect().size)
+	Modules.NumericInputScreen.draw(self, font, Callable(self, "_t"), numeric_input, NUMERIC_KEY_ROWS, get_viewport_rect().size)
 
 
 func _draw_filter_input_page() -> void:
-	FilterInputScreen.draw(self, font, Callable(self, "_t"), can_log.filter, KEYBOARD_ROWS, can_filter.key_row, can_filter.key_col, can_filter.lowercase, get_viewport_rect().size)
+	Modules.FilterInputScreen.draw(self, font, Callable(self, "_t"), can_log.filter, KEYBOARD_ROWS, can_filter.key_row, can_filter.key_col, can_filter.lowercase, get_viewport_rect().size)
 
 
 func _draw_status_overlay() -> void:
-	AppChrome.draw_status_overlay(self, font, status)
+	Modules.AppChrome.draw_status_overlay(self, font, status)
 
 
 func _draw_footer() -> void:
-	AppChrome.draw_footer(self, font, Callable(self, "_t"))
+	Modules.AppChrome.draw_footer(self, font, Callable(self, "_t"))
 
 
 func _t(key: String) -> String:
-	return UiText.text(app_session.ui_lang, key)
+	return Modules.UiText.text(app_session.ui_lang, key)
 
 
 func _tab_name(index: int) -> String:
