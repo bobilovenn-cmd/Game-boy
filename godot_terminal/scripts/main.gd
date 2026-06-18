@@ -31,7 +31,7 @@ const StatusState = preload("res://scripts/models/status_state.gd")  # 状态提
 const UiText = preload("res://scripts/ui_text.gd")          # 国际化文本
 const AppBootstrap = preload("res://scripts/app/app_bootstrap.gd") # 启动初始化
 const UiConfig = preload("res://scripts/app/ui_config.gd")   # UI页面配置
-const InputMapper = preload("res://scripts/input/input_mapper.gd")  # 按键映射
+const InputRouter = preload("res://scripts/input/input_router.gd")  # 输入事件路由
 const RawInputReader = preload("res://scripts/input/raw_input_reader.gd")  # RGB30原始输入读取
 const LanguageScreen = preload("res://scripts/screens/language_screen.gd")  # 语言选择页
 const NodeSelectScreen = preload("res://scripts/screens/node_select_screen.gd")  # 节点选择页
@@ -73,13 +73,9 @@ var connection = ConnectionState.new()      # UDP连接运行状态
 var ota = OtaState.new()                    # OTA升级状态
 var status = StatusState.new()              # 状态提示
 var raw_input = RawInputReader.new()        # /dev/input/js0读取器
+var input_router = InputRouter.new()        # 统一输入事件路由
 
 var result_msg = ""                         # SDO读取结果
-
-## 手柄输入状态
-var last_input_label = "none"               # 最近按键调试标签
-var last_raw_button = -1                    # 最近原始按键ID
-var godot_axis_active = {}                  # fallback 轴输入去抖状态
 
 
 ## 应用初始化
@@ -184,51 +180,26 @@ func _draw() -> void:
 
 func _drain_raw_input() -> void:
 	for raw in raw_input.drain_events():
-		if raw >= RawInputReader.RELEASE_OFFSET:
-			var release_id = raw - RawInputReader.RELEASE_OFFSET
-			last_raw_button = release_id
-			last_input_label = "raw %d -> jog_stop" % release_id
-			_handle_action("jog_stop")
-			continue
-		last_raw_button = raw
-		var action = InputMapper.raw_action(raw)
-		last_input_label = "raw %d -> %s" % [raw, action if action != "" else "unmapped"]
-		if action != "":
-			_handle_action(action)
-		else:
-			_set_status("Unmapped raw button %d" % raw, "warn")
+		_apply_input_result(input_router.route_raw(raw, RawInputReader.RELEASE_OFFSET))
 
 
 func _handle_godot_joy_button(button_index: int, pressed: bool) -> void:
-	var action := InputMapper.godot_button_action(button_index)
-	if action == "":
-		return
-	last_input_label = "godot %d -> %s" % [button_index, action]
-	if pressed:
-		_handle_action(action)
-	elif action == "jog_cw" or action == "jog_ccw":
-		_handle_action("jog_stop")
+	_apply_input_result(input_router.route_godot_button(button_index, pressed))
 
 
 func _handle_godot_joy_motion(axis: int, value: float) -> void:
-	var action = InputMapper.godot_axis_action(axis)
-	if action == "":
-		return
-
-	var is_pressed = value > 0.55
-	var was_pressed = bool(godot_axis_active.get(axis, false))
-	if is_pressed == was_pressed:
-		return
-	godot_axis_active[axis] = is_pressed
-	last_input_label = "axis %d %.2f -> %s" % [axis, value, action if is_pressed else "release"]
-	if is_pressed:
-		_handle_action(action)
+	_apply_input_result(input_router.route_godot_axis(axis, value))
 
 
 func _handle_key(keycode: int) -> void:
-	var action = InputMapper.keyboard_action(keycode)
-	if action != "":
-		_handle_action(action)
+	_apply_input_result(input_router.route_keyboard(keycode))
+
+
+func _apply_input_result(result: Dictionary) -> void:
+	if result.has("action"):
+		_handle_action(str(result.get("action", "")))
+	elif result.has("unmapped_button"):
+		_set_status("Unmapped raw button %d" % int(result.get("unmapped_button", -1)), "warn")
 
 
 func _handle_action(action: String) -> void:
@@ -525,7 +496,7 @@ func _draw_tabs() -> void:
 
 
 func _draw_monitor_page() -> void:
-	MonitorScreen.draw(self, font, Callable(self, "_t"), _texts(MONITOR_ITEM_KEYS), navigation.selected_index(0), motor, raw_input.ok, last_input_label)
+	MonitorScreen.draw(self, font, Callable(self, "_t"), _texts(MONITOR_ITEM_KEYS), navigation.selected_index(0), motor, raw_input.ok, input_router.last_input_label)
 
 
 func _draw_config_page() -> void:
