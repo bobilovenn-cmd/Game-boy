@@ -1,6 +1,7 @@
 extends RefCounted
 
 const UiTheme = preload("res://scripts/theme/ui_theme.gd")
+const AppChrome = preload("res://scripts/screens/app_chrome.gd")
 
 
 static func draw(canvas: CanvasItem, font: Font, t: Callable, filter_value: String, key_rows: Array, keyboard_row: int, keyboard_col: int, lowercase: bool, viewport_size: Vector2) -> void:
@@ -10,16 +11,16 @@ static func draw(canvas: CanvasItem, font: Font, t: Callable, filter_value: Stri
 	canvas.draw_rect(rect, UiTheme.C_ACCENT, false, 2.0)
 	canvas.draw_line(rect.position, rect.position + Vector2(28, 0), UiTheme.C_ACCENT, 3.0)
 	canvas.draw_line(rect.position, rect.position + Vector2(0, 28), UiTheme.C_ACCENT, 3.0)
-	_draw_text(canvas, font, t.call("keyboard_title"), rect.position.x + 22, rect.position.y + 24, UiTheme.C_TEXT, 22)
-	_draw_text(canvas, font, t.call("keyboard_hint"), rect.position.x + 22, rect.position.y + 62, UiTheme.C_DIM, 13)
+	AppChrome.draw_text(canvas, font, t.call("keyboard_title"), rect.position.x + 22, rect.position.y + 24, UiTheme.C_TEXT, 22)
+	AppChrome.draw_text(canvas, font, t.call("keyboard_hint"), rect.position.x + 22, rect.position.y + 62, UiTheme.C_DIM, 13)
 
 	var input_rect = Rect2(rect.position.x + 44, rect.position.y + 102, rect.size.x - 88, 52)
 	canvas.draw_rect(input_rect, UiTheme.C_INPUT, true)
 	canvas.draw_rect(input_rect, UiTheme.C_LINE, false, 1.0)
-	_draw_text(canvas, font, t.call("can_filter_label") + ":", input_rect.position.x + 16, input_rect.position.y + 15, UiTheme.C_TEXT, 16)
+	AppChrome.draw_text(canvas, font, t.call("can_filter_label") + ":", input_rect.position.x + 16, input_rect.position.y + 15, UiTheme.C_TEXT, 16)
 	var value_text = filter_value if filter_value != "" else t.call("can_all")
 	var value_color = UiTheme.C_TEXT if filter_value != "" else UiTheme.C_DIM_2
-	_draw_text(canvas, font, value_text, input_rect.position.x + 104, input_rect.position.y + 15, value_color, 16)
+	AppChrome.draw_text(canvas, font, value_text, input_rect.position.x + 104, input_rect.position.y + 15, value_color, 16)
 
 	var key_h = 30.0
 	var gap = 6.0
@@ -34,7 +35,7 @@ static func draw(canvas: CanvasItem, font: Font, t: Callable, filter_value: Stri
 			canvas.draw_rect(r, UiTheme.C_PANEL, true)
 			canvas.draw_rect(r, UiTheme.C_LINE, false, 1.0)
 			var label = _keyboard_key_label(key_rows, row_index, col_index, lowercase)
-			_draw_text(canvas, font, label, r.position.x, r.position.y + 7, UiTheme.C_TEXT, 11, HORIZONTAL_ALIGNMENT_CENTER, r.size.x)
+			AppChrome.draw_text(canvas, font, label, r.position.x, r.position.y + 7, UiTheme.C_TEXT, 11, HORIZONTAL_ALIGNMENT_CENTER, r.size.x)
 		y += key_h + gap
 
 	var selected_row: Array = key_rows[keyboard_row]
@@ -67,9 +68,3 @@ static func _keyboard_key_label(key_rows: Array, row_index: int, col_index: int,
 	if key == "SHIFT":
 		return "abc" if not lowercase else "ABC"
 	return key
-
-
-static func _draw_text(canvas: CanvasItem, font: Font, text: String, x: float, y: float, color: Color, font_size: int = 16, align: HorizontalAlignment = HORIZONTAL_ALIGNMENT_LEFT, width: float = -1.0) -> void:
-	if font == null:
-		return
-	canvas.draw_string(font, Vector2(x, y + font_size), text, align, width, font_size, color)

@@ -15,13 +15,13 @@ static func draw_background(canvas: CanvasItem) -> void:
 
 
 static func draw_header(canvas: CanvasItem, font: Font, t: Callable, motor, last_rx_msec: int, udp_ready: bool, selected_node_id: int) -> void:
-	_draw_panel(canvas, Rect2(14, 12, 692, 64), UiTheme.C_PANEL, UiTheme.C_LINE)
-	_draw_text(canvas, font, t.call("app_title"), 30, 28, UiTheme.C_TEXT, 20)
+	draw_panel(canvas, Rect2(14, 12, 692, 64), UiTheme.C_PANEL, UiTheme.C_LINE)
+	draw_text(canvas, font, t.call("app_title"), 30, 28, UiTheme.C_TEXT, 20)
 	var link = motor.alive or (last_rx_msec > 0 and Time.get_ticks_msec() - last_rx_msec <= 1500)
 	_draw_status_chip(canvas, font, Rect2(505, 23, 84, 24), "LINK", link)
 	_draw_status_chip(canvas, font, Rect2(598, 23, 84, 24), "UDP", udp_ready)
-	_draw_text(canvas, font, "%d ms" % AppSettings.HEARTBEAT_INTERVAL_MS, 622, 56, UiTheme.C_DIM, 10)
-	_draw_text(canvas, font, t.call("header_subtitle") % selected_node_id, 32, 56, UiTheme.C_TEXT, 10)
+	draw_text(canvas, font, "%d ms" % AppSettings.HEARTBEAT_INTERVAL_MS, 622, 56, UiTheme.C_DIM, 10)
+	draw_text(canvas, font, t.call("header_subtitle") % selected_node_id, 32, 56, UiTheme.C_TEXT, 10)
 
 
 static func draw_tabs(canvas: CanvasItem, font: Font, tab_keys: Array, current_tab: int, tab_name: Callable) -> void:
@@ -33,7 +33,7 @@ static func draw_tabs(canvas: CanvasItem, font: Font, tab_keys: Array, current_t
 		var active = i == current_tab
 		canvas.draw_rect(rect, UiTheme.C_ACCENT if active else UiTheme.C_PANEL_2, true)
 		canvas.draw_rect(rect, UiTheme.C_ACCENT if active else UiTheme.C_LINE, false, 1.0)
-		_draw_text(canvas, font, tab_name.call(i), rect.position.x, rect.position.y + 10, UiTheme.C_TEXT, 12, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x)
+		draw_text(canvas, font, tab_name.call(i), rect.position.x, rect.position.y + 10, UiTheme.C_TEXT, 12, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x)
 		x += tab_w + gap
 
 
@@ -48,22 +48,40 @@ static func draw_status_overlay(canvas: CanvasItem, font: Font, status) -> void:
 	var rect = Rect2(110, 622, 500, 42)
 	canvas.draw_rect(rect, Color(UiTheme.C_INPUT, 0.96), true)
 	canvas.draw_rect(rect, color, false, 2.0)
-	_draw_text(canvas, font, status.message, rect.position.x, rect.position.y + 13, color, 14, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x)
+	draw_text(canvas, font, status.message, rect.position.x, rect.position.y + 13, color, 14, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x)
 
 
 static func draw_footer(canvas: CanvasItem, font: Font, t: Callable) -> void:
-	_draw_panel(canvas, Rect2(14, 670, 692, 36), UiTheme.C_PANEL, UiTheme.C_LINE)
-	_draw_text(canvas, font, t.call("footer"), 24, 681, UiTheme.C_DIM, 12)
+	draw_panel(canvas, Rect2(14, 670, 692, 36), UiTheme.C_PANEL, UiTheme.C_LINE)
+	draw_text(canvas, font, t.call("footer"), 24, 681, UiTheme.C_DIM, 12)
+
+
+static func draw_action_rail(canvas: CanvasItem, font: Font, t: Callable, rect: Rect2, items: Array, selected_index: int) -> void:
+	draw_panel(canvas, rect, UiTheme.C_PANEL, UiTheme.C_LINE)
+	draw_text(canvas, font, t.call("commands"), rect.position.x + 18, rect.position.y + 18, UiTheme.C_DIM, 14)
+	var gap = 8.0
+	var row_h = min(38.0, (rect.size.y - 58.0 - gap * float(max(items.size() - 1, 0))) / float(max(items.size(), 1)))
+	var y = rect.position.y + 48
+	for i in items.size():
+		var row_rect = Rect2(rect.position.x + 14, y, rect.size.x - 28, row_h)
+		canvas.draw_rect(row_rect, UiTheme.C_INPUT, true)
+		canvas.draw_rect(row_rect, UiTheme.C_LINE, false, 1.0)
+		draw_text(canvas, font, items[i], row_rect.position.x, row_rect.position.y + max(7, int((row_h - 18) * 0.5)), UiTheme.C_TEXT, 14, HORIZONTAL_ALIGNMENT_CENTER, row_rect.size.x)
+		y += row_h + gap
+	if selected_index >= 0 and selected_index < items.size():
+		var selected_rect = Rect2(rect.position.x + 14, rect.position.y + 48 + selected_index * (row_h + gap), rect.size.x - 28, row_h)
+		canvas.draw_rect(selected_rect, UiTheme.C_ACCENT, false, 2.0)
+		canvas.draw_rect(Rect2(selected_rect.position.x, selected_rect.position.y, 5, selected_rect.size.y), UiTheme.C_ACCENT, true)
 
 
 static func _draw_status_chip(canvas: CanvasItem, font: Font, rect: Rect2, label: String, ok: bool) -> void:
 	var color = UiTheme.C_GREEN if ok else UiTheme.C_RED
 	canvas.draw_rect(rect, Color(color, 0.18), true)
 	canvas.draw_rect(rect, color, false, 1.0)
-	_draw_text(canvas, font, label, rect.position.x, rect.position.y + 7, color, 10, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x)
+	draw_text(canvas, font, label, rect.position.x, rect.position.y + 7, color, 10, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x)
 
 
-static func _draw_panel(canvas: CanvasItem, rect: Rect2, fill: Color, border: Color) -> void:
+static func draw_panel(canvas: CanvasItem, rect: Rect2, fill: Color, border: Color) -> void:
 	canvas.draw_rect(rect, fill, true)
 	canvas.draw_rect(rect, border, false, 1.0)
 	canvas.draw_line(rect.position, rect.position + Vector2(18, 0), UiTheme.C_ACCENT, 2.0)
@@ -72,7 +90,7 @@ static func _draw_panel(canvas: CanvasItem, rect: Rect2, fill: Color, border: Co
 	canvas.draw_line(Vector2(rect.end.x, rect.position.y), Vector2(rect.end.x, rect.position.y + 18), UiTheme.C_ACCENT_2, 2.0)
 
 
-static func _draw_text(canvas: CanvasItem, font: Font, text: String, x: float, y: float, color: Color, font_size: int = 16, align: HorizontalAlignment = HORIZONTAL_ALIGNMENT_LEFT, width: float = -1.0) -> void:
+static func draw_text(canvas: CanvasItem, font: Font, text: String, x: float, y: float, color: Color, font_size: int = 16, align: HorizontalAlignment = HORIZONTAL_ALIGNMENT_LEFT, width: float = -1.0) -> void:
 	if font == null:
 		return
 	canvas.draw_string(font, Vector2(x, y + font_size), text, align, width, font_size, color)

@@ -1,37 +1,20 @@
 extends RefCounted
 
 const UiTheme = preload("res://scripts/theme/ui_theme.gd")
+const AppChrome = preload("res://scripts/screens/app_chrome.gd")
 
 
 static func draw(canvas: CanvasItem, font: Font, t: Callable, command_items: Array, selected_index: int, motor, raw_ok: bool, last_input_label: String) -> void:
-	_draw_action_rail(canvas, font, t, Rect2(18, 140, 188, 360), command_items, selected_index)
+	AppChrome.draw_action_rail(canvas, font, t, Rect2(18, 140, 188, 360), command_items, selected_index)
 	_draw_telemetry_grid(canvas, font, t, Rect2(224, 140, 478, 190), motor)
 	_draw_waveform_panel(canvas, font, t, Rect2(224, 346, 478, 196), motor)
 	_draw_command_matrix(canvas, font, t, Rect2(18, 516, 188, 88))
 	_draw_live_debug(canvas, font, t, Rect2(224, 558, 478, 46), raw_ok, last_input_label)
 
 
-static func _draw_action_rail(canvas: CanvasItem, font: Font, t: Callable, rect: Rect2, items: Array, selected_index: int) -> void:
-	_draw_panel(canvas, rect, UiTheme.C_PANEL, UiTheme.C_LINE)
-	_draw_text(canvas, font, t.call("commands"), rect.position.x + 18, rect.position.y + 18, UiTheme.C_DIM, 14)
-	var gap = 8.0
-	var row_h = min(38.0, (rect.size.y - 58.0 - gap * float(max(items.size() - 1, 0))) / float(max(items.size(), 1)))
-	var y = rect.position.y + 48
-	for i in items.size():
-		var r = Rect2(rect.position.x + 14, y, rect.size.x - 28, row_h)
-		canvas.draw_rect(r, UiTheme.C_INPUT, true)
-		canvas.draw_rect(r, UiTheme.C_LINE, false, 1.0)
-		_draw_text(canvas, font, items[i], r.position.x, r.position.y + max(7, int((row_h - 18) * 0.5)), UiTheme.C_TEXT, 14, HORIZONTAL_ALIGNMENT_CENTER, r.size.x)
-		y += row_h + gap
-	if selected_index >= 0 and selected_index < items.size():
-		var selected_rect = Rect2(rect.position.x + 14, rect.position.y + 48 + selected_index * (row_h + gap), rect.size.x - 28, row_h)
-		canvas.draw_rect(selected_rect, UiTheme.C_ACCENT, false, 2.0)
-		canvas.draw_rect(Rect2(selected_rect.position.x, selected_rect.position.y, 5, selected_rect.size.y), UiTheme.C_ACCENT, true)
-
-
 static func _draw_telemetry_grid(canvas: CanvasItem, font: Font, t: Callable, rect: Rect2, motor) -> void:
-	_draw_panel(canvas, rect, UiTheme.C_PANEL, UiTheme.C_LINE)
-	_draw_text(canvas, font, t.call("telemetry"), rect.position.x + 18, rect.position.y + 18, UiTheme.C_DIM, 14)
+	AppChrome.draw_panel(canvas, rect, UiTheme.C_PANEL, UiTheme.C_LINE)
+	AppChrome.draw_text(canvas, font, t.call("telemetry"), rect.position.x + 18, rect.position.y + 18, UiTheme.C_DIM, 14)
 	var cards = [
 		[t.call("metric_current"), "%.2f" % motor.current, "A", UiTheme.C_ACCENT],
 		[t.call("metric_voltage"), "%.1f" % motor.voltage, "V", UiTheme.C_ACCENT_2],
@@ -53,14 +36,14 @@ static func _draw_telemetry_grid(canvas: CanvasItem, font: Font, t: Callable, re
 static func _draw_metric_card(canvas: CanvasItem, font: Font, rect: Rect2, label: String, value: String, unit: String, color: Color) -> void:
 	canvas.draw_rect(rect, UiTheme.C_INPUT, true)
 	canvas.draw_rect(rect, Color(color, 0.75), false, 1.0)
-	_draw_text(canvas, font, label, rect.position.x + 8, rect.position.y + 7, UiTheme.C_DIM, 12)
+	AppChrome.draw_text(canvas, font, label, rect.position.x + 8, rect.position.y + 7, UiTheme.C_DIM, 12)
 	var display_value = value if unit == "" else "%s %s" % [value, unit]
-	_draw_text(canvas, font, display_value, rect.position.x + 8, rect.position.y + 27, color, 12)
+	AppChrome.draw_text(canvas, font, display_value, rect.position.x + 8, rect.position.y + 27, color, 12)
 
 
 static func _draw_waveform_panel(canvas: CanvasItem, font: Font, t: Callable, rect: Rect2, motor) -> void:
-	_draw_panel(canvas, rect, UiTheme.C_PANEL, UiTheme.C_LINE)
-	_draw_text(canvas, font, t.call("waveform"), rect.position.x + 18, rect.position.y + 18, UiTheme.C_DIM, 14)
+	AppChrome.draw_panel(canvas, rect, UiTheme.C_PANEL, UiTheme.C_LINE)
+	AppChrome.draw_text(canvas, font, t.call("waveform"), rect.position.x + 18, rect.position.y + 18, UiTheme.C_DIM, 14)
 	var plot = Rect2(rect.position.x + 18, rect.position.y + 46, rect.size.x - 36, rect.size.y - 66)
 	canvas.draw_rect(plot, UiTheme.C_INPUT, true)
 	for i in range(1, 5):
@@ -74,7 +57,7 @@ static func _draw_waveform_panel(canvas: CanvasItem, font: Font, t: Callable, re
 	var vals = motor.speed_history
 	var n = min(vals.size(), 96)
 	if n < 2:
-		_draw_text(canvas, font, t.call("waiting_packets"), plot.position.x, plot.position.y + plot.size.y * 0.5 - 8, UiTheme.C_DIM, 15, HORIZONTAL_ALIGNMENT_CENTER, plot.size.x)
+		AppChrome.draw_text(canvas, font, t.call("waiting_packets"), plot.position.x, plot.position.y + plot.size.y * 0.5 - 8, UiTheme.C_DIM, 15, HORIZONTAL_ALIGNMENT_CENTER, plot.size.x)
 		return
 	var start = vals.size() - n
 	var vmin = vals[start]
@@ -95,33 +78,18 @@ static func _draw_waveform_panel(canvas: CanvasItem, font: Font, t: Callable, re
 
 
 static func _draw_command_matrix(canvas: CanvasItem, font: Font, t: Callable, rect: Rect2) -> void:
-	_draw_panel(canvas, rect, UiTheme.C_PANEL, UiTheme.C_LINE)
-	_draw_text(canvas, font, t.call("hotkeys"), rect.position.x + 14, rect.position.y + 16, UiTheme.C_DIM, 13)
-	_draw_text(canvas, font, "X %s" % t.call("cmd_enable"), rect.position.x + 14, rect.position.y + 42, UiTheme.C_ACCENT, 13)
-	_draw_text(canvas, font, "Y %s" % t.call("cmd_disable"), rect.position.x + 96, rect.position.y + 42, UiTheme.C_WARN, 13)
-	_draw_text(canvas, font, "L1/R1 JOG", rect.position.x + 14, rect.position.y + 66, UiTheme.C_TEXT, 13)
-	_draw_text(canvas, font, "L2 %s" % t.call("cmd_estop"), rect.position.x + 96, rect.position.y + 66, UiTheme.C_RED, 13)
+	AppChrome.draw_panel(canvas, rect, UiTheme.C_PANEL, UiTheme.C_LINE)
+	AppChrome.draw_text(canvas, font, t.call("hotkeys"), rect.position.x + 14, rect.position.y + 16, UiTheme.C_DIM, 13)
+	AppChrome.draw_text(canvas, font, "X %s" % t.call("cmd_enable"), rect.position.x + 14, rect.position.y + 42, UiTheme.C_ACCENT, 13)
+	AppChrome.draw_text(canvas, font, "Y %s" % t.call("cmd_disable"), rect.position.x + 96, rect.position.y + 42, UiTheme.C_WARN, 13)
+	AppChrome.draw_text(canvas, font, "L1/R1 JOG", rect.position.x + 14, rect.position.y + 66, UiTheme.C_TEXT, 13)
+	AppChrome.draw_text(canvas, font, "L2 %s" % t.call("cmd_estop"), rect.position.x + 96, rect.position.y + 66, UiTheme.C_RED, 13)
 
 
 static func _draw_live_debug(canvas: CanvasItem, font: Font, t: Callable, rect: Rect2, raw_ok: bool, last_input_label: String) -> void:
-	_draw_panel(canvas, rect, UiTheme.C_INPUT, UiTheme.C_LINE)
+	AppChrome.draw_panel(canvas, rect, UiTheme.C_INPUT, UiTheme.C_LINE)
 	var input_state = "RAW /dev/input/js0" if raw_ok else "GODOT FALLBACK"
-	_draw_text(canvas, font, t.call("input"), rect.position.x + 14, rect.position.y + 16, UiTheme.C_DIM, 13)
-	_draw_text(canvas, font, input_state, rect.position.x + 76, rect.position.y + 16, UiTheme.C_ACCENT if raw_ok else UiTheme.C_WARN, 13)
-	_draw_text(canvas, font, t.call("last"), rect.position.x + 270, rect.position.y + 16, UiTheme.C_DIM, 13)
-	_draw_text(canvas, font, last_input_label, rect.position.x + 314, rect.position.y + 16, UiTheme.C_TEXT, 13)
-
-
-static func _draw_panel(canvas: CanvasItem, rect: Rect2, fill: Color, border: Color) -> void:
-	canvas.draw_rect(rect, fill, true)
-	canvas.draw_rect(rect, border, false, 1.0)
-	canvas.draw_line(rect.position, rect.position + Vector2(18, 0), UiTheme.C_ACCENT, 2.0)
-	canvas.draw_line(rect.position, rect.position + Vector2(0, 18), UiTheme.C_ACCENT, 2.0)
-	canvas.draw_line(Vector2(rect.end.x, rect.position.y), Vector2(rect.end.x - 18, rect.position.y), UiTheme.C_ACCENT_2, 2.0)
-	canvas.draw_line(Vector2(rect.end.x, rect.position.y), Vector2(rect.end.x, rect.position.y + 18), UiTheme.C_ACCENT_2, 2.0)
-
-
-static func _draw_text(canvas: CanvasItem, font: Font, text: String, x: float, y: float, color: Color, font_size: int = 16, align: HorizontalAlignment = HORIZONTAL_ALIGNMENT_LEFT, width: float = -1.0) -> void:
-	if font == null:
-		return
-	canvas.draw_string(font, Vector2(x, y + font_size), text, align, width, font_size, color)
+	AppChrome.draw_text(canvas, font, t.call("input"), rect.position.x + 14, rect.position.y + 16, UiTheme.C_DIM, 13)
+	AppChrome.draw_text(canvas, font, input_state, rect.position.x + 76, rect.position.y + 16, UiTheme.C_ACCENT if raw_ok else UiTheme.C_WARN, 13)
+	AppChrome.draw_text(canvas, font, t.call("last"), rect.position.x + 270, rect.position.y + 16, UiTheme.C_DIM, 13)
+	AppChrome.draw_text(canvas, font, last_input_label, rect.position.x + 314, rect.position.y + 16, UiTheme.C_TEXT, 13)

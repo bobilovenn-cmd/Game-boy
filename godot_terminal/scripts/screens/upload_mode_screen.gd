@@ -1,6 +1,7 @@
 extends RefCounted
 
 const UiTheme = preload("res://scripts/theme/ui_theme.gd")
+const AppChrome = preload("res://scripts/screens/app_chrome.gd")
 
 
 static func draw(canvas: CanvasItem, font: Font, t: Callable, upload_mode: RefCounted) -> void:
@@ -10,18 +11,18 @@ static func draw(canvas: CanvasItem, font: Font, t: Callable, upload_mode: RefCo
 	canvas.draw_rect(rect, UiTheme.C_ACCENT, false, 2.0)
 	canvas.draw_line(rect.position, rect.position + Vector2(28, 0), UiTheme.C_ACCENT, 3.0)
 	canvas.draw_line(rect.position, rect.position + Vector2(0, 28), UiTheme.C_ACCENT, 3.0)
-	_draw_text(canvas, font, t.call("upload_title"), rect.position.x + 28, rect.position.y + 30, UiTheme.C_TEXT, 24)
-	_draw_text(canvas, font, t.call("upload_subtitle"), rect.position.x + 28, rect.position.y + 82, UiTheme.C_TEXT, 15)
+	AppChrome.draw_text(canvas, font, t.call("upload_title"), rect.position.x + 28, rect.position.y + 30, UiTheme.C_TEXT, 24)
+	AppChrome.draw_text(canvas, font, t.call("upload_subtitle"), rect.position.x + 28, rect.position.y + 82, UiTheme.C_TEXT, 15)
 
 	_draw_value_section(canvas, font, t.call("upload_wifi"), upload_mode.ssid, 160, 21)
 	_draw_value_section(canvas, font, t.call("upload_url"), upload_mode.url, 264, 17)
 	_draw_value_section(canvas, font, t.call("upload_save_path"), "/storage/firmware.bin", 368, 17)
-	_draw_text(canvas, font, t.call("upload_status") + ": " + upload_mode.status, 170, 510, UiTheme.C_TEXT, 14)
+	AppChrome.draw_text(canvas, font, t.call("upload_status") + ": " + upload_mode.status, 170, 510, UiTheme.C_TEXT, 14)
 
 	var exit_rect = Rect2(128, 598, 464, 52)
 	canvas.draw_rect(exit_rect, UiTheme.C_INPUT, true)
 	canvas.draw_rect(exit_rect, UiTheme.C_LINE, false, 1.0)
-	_draw_text(canvas, font, t.call("upload_exit"), exit_rect.position.x, exit_rect.position.y + 15, UiTheme.C_TEXT, 17, HORIZONTAL_ALIGNMENT_CENTER, exit_rect.size.x)
+	AppChrome.draw_text(canvas, font, t.call("upload_exit"), exit_rect.position.x, exit_rect.position.y + 15, UiTheme.C_TEXT, 17, HORIZONTAL_ALIGNMENT_CENTER, exit_rect.size.x)
 	canvas.draw_rect(exit_rect, UiTheme.C_WARN, false, 2.0)
 	canvas.draw_rect(Rect2(exit_rect.position.x, exit_rect.position.y, 6, exit_rect.size.y), UiTheme.C_WARN, true)
 
@@ -30,14 +31,8 @@ static func _draw_value_section(canvas: CanvasItem, font: Font, title: String, v
 	var title_rect = Rect2(285, y, 150, 30)
 	canvas.draw_rect(title_rect, UiTheme.C_INPUT, true)
 	canvas.draw_rect(title_rect, UiTheme.C_LINE, false, 1.0)
-	_draw_text(canvas, font, title, title_rect.position.x, title_rect.position.y + 5, UiTheme.C_TEXT, 17, HORIZONTAL_ALIGNMENT_CENTER, title_rect.size.x)
+	AppChrome.draw_text(canvas, font, title, title_rect.position.x, title_rect.position.y + 5, UiTheme.C_TEXT, 17, HORIZONTAL_ALIGNMENT_CENTER, title_rect.size.x)
 	var value_rect = Rect2(170, y + 38, 380, 50)
 	canvas.draw_rect(value_rect, UiTheme.C_BG, true)
 	canvas.draw_rect(value_rect, UiTheme.C_BG_2, false, 1.0)
-	_draw_text(canvas, font, value, value_rect.position.x, value_rect.position.y + 13, UiTheme.C_TEXT, value_size, HORIZONTAL_ALIGNMENT_CENTER, value_rect.size.x)
-
-
-static func _draw_text(canvas: CanvasItem, font: Font, text: String, x: float, y: float, color: Color, font_size: int = 16, align: HorizontalAlignment = HORIZONTAL_ALIGNMENT_LEFT, width: float = -1.0) -> void:
-	if font == null:
-		return
-	canvas.draw_string(font, Vector2(x, y + font_size), text, align, width, font_size, color)
+	AppChrome.draw_text(canvas, font, value, value_rect.position.x, value_rect.position.y + 13, UiTheme.C_TEXT, value_size, HORIZONTAL_ALIGNMENT_CENTER, value_rect.size.x)
