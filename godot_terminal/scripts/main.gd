@@ -23,6 +23,7 @@ const CanFilterController = preload("res://scripts/controllers/can_filter_contro
 const NavigationController = preload("res://scripts/controllers/navigation_controller.gd")  # 页面导航
 const OtaTransferController = preload("res://scripts/controllers/ota_transfer_controller.gd")  # OTA分块传输
 const SessionController = preload("res://scripts/controllers/session_controller.gd")  # 语言和节点会话
+const PageCommandController = preload("res://scripts/controllers/page_command_controller.gd")  # 页面命令分发
 const MotorDataScript = preload("res://scripts/motor_data.gd")  # 电机数据模型
 const CanLogState = preload("res://scripts/models/can_log_state.gd")  # CAN日志状态
 const ConnectionState = preload("res://scripts/models/connection_state.gd")  # UDP连接状态
@@ -68,6 +69,7 @@ var can_filter = CanFilterController.new()   # CAN过滤输入控制器
 var navigation = NavigationController.new()  # 页面导航控制器
 var ota_transfer = OtaTransferController.new() # OTA传输控制器
 var app_session = SessionController.new()    # 语言和节点会话控制器
+var page_commands = PageCommandController.new() # 页面命令控制器
 var can_log = CanLogState.new()             # CAN日志状态
 var connection = ConnectionState.new()      # UDP连接运行状态
 var ota = OtaState.new()                    # OTA升级状态
@@ -300,58 +302,44 @@ func _return_to_language_select() -> void:
 
 
 func _confirm_current_selection() -> void:
-	var tab = navigation.current_tab
-	var index = navigation.selected_index(tab)
-	if tab == 0:
-		match index:
-			0:
-				_send(motor_controller.enable(), "Enable sent")
-			1:
-				_send(motor_controller.disable(), "Disable sent")
-			2:
-				_send(motor_controller.estop(), "E-STOP sent", "error")
-			3:
-				_send(motor_controller.jog_cw(), "Jog CW %d" % motor_controller.target_speed)
-			4:
-				_send(motor_controller.jog_ccw(), "Jog CCW %d" % motor_controller.target_speed)
-			5:
-				_open_numeric_input("position")
-			6:
-				_open_numeric_input("speed")
-	elif tab == 1:
-		var item: Array = CONFIG_ITEMS[index]
-		var name_key: String = item[0]
-		var index: int = item[1]
-		var sub: int = item[2]
-		if name_key == "cfg_save_eeprom":
-			_send(Protocol.sdo_write(app_session.selected_node_id, index, sub, 0x65766173), "Save EEPROM")
-		else:
-			result_msg = "Reading 0x%s..." % _hex(index)
-			_send(Protocol.sdo_read(app_session.selected_node_id, index, sub), result_msg)
-	elif tab == 2:
-		match index:
-			0:
-				_open_upload_mode()
-			1:
-				_load_default_firmware()
-			2:
-				_start_ota_transfer()
-			3:
-				_send(Protocol.ota_verify(), "Verify requested")
-				_log_ota("Requesting MD5 verify")
-			4:
-				_send(Protocol.ota_flash(app_session.selected_node_id), "Flash command sent")
-				_log_ota("Flash command sent")
-	elif tab == 3:
-		match index:
-			0:
-				can_filter.start()
-			1:
-				can_log.clear()
-				_set_status(_t("can_reset_status"))
-			2:
-				can_log.paused = not can_log.paused
-				_set_status(_t("can_paused") if can_log.paused else _t("can_run_status"))
+	var command = page_commands.resolve(
+		navigation.current_tab,
+		navigation.selected_index(),
+		app_session.selected_node_id,
+		CONFIG_ITEMS,
+		motor_controller
+	)
+	_apply_page_command(command)
+
+
+func _apply_page_command(command: Dictionary) -> void:
+	if command.has("result_msg"):
+		result_msg = str(command.get("result_msg", ""))
+	if command.has("ota_log"):
+		_log_ota(str(command.get("ota_log", "")))
+	match str(command.get("event", "")):
+		"send":
+			_send(
+				str(command.get("message", "")),
+				str(command.get("ui_message", "")),
+				str(command.get("kind", "info"))
+			)
+		"open_numeric":
+			_open_numeric_input(str(command.get("kind", "")))
+		"open_upload":
+			_open_upload_mode()
+		"load_firmware":
+			_load_default_firmware()
+		"start_ota":
+			_start_ota_transfer()
+		"open_filter":
+			can_filter.start()
+		"clear_can_log":
+			can_log.clear()
+			_set_status(_t("can_reset_status"))
+		"toggle_can_pause":
+			can_log.paused = not can_log.paused
+			_set_status(_t("can_paused") if can_log.paused else _t("can_run_status"))
 
 
 func _open_upload_mode() -> void:
@@ -556,7 +544,3 @@ func _set_status(message: String, kind: String = "info") -> void:
 
 func _log_ota(message: String) -> void:
 	ota.add_log(message)
-
-
-func _hex(value: int, width: int = 4) -> String:
-	return ("%X" % value).pad_zeros(width)
