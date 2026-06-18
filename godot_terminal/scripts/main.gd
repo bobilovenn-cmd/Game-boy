@@ -1,11 +1,6 @@
-## 主控制器 - main.gd
-## 作用: 应用入口，整合所有功能模块
-## 职责:
-##   - UI渲染: 绘制监控、配置、OTA、CAN日志页面
-##   - 输入处理: 读取/dev/input/js0手柄按键 + Godot键盘事件
-##   - UDP通信: 与ESP32 CAN网关收发消息
-##   - OTA固件升级: 加载、分块传输、校验、刷写
-## 依赖: settings.gd, protocol.gd, motor_data.gd, ui_text.gd
+## Godot 应用入口
+## 只负责生命周期、模块装配、统一事件副作用和页面协调。
+## 输入映射、交互规则、运行调度、协议、状态和页面绘制均由独立模块负责。
 
 extends Control
 
@@ -23,7 +18,7 @@ const NODE_KEY_ROWS = Modules.UiConfig.NODE_KEY_ROWS
 const KEYBOARD_ROWS = Modules.UiConfig.KEYBOARD_ROWS
 const NUMERIC_KEY_ROWS = Modules.UiConfig.NUMERIC_KEY_ROWS
 
-## 核心对象
+## 应用模块实例
 var font: Font                              # 当前字体
 var udp_client = Modules.UdpClient.new()            # UDP通信对象
 var motor = Modules.MotorData.new()           # 电机数据实例

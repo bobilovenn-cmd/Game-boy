@@ -1,16 +1,13 @@
 extends RefCounted
 
-# Core protocol and configuration
+# Core configuration
 const AppSettings = preload("res://scripts/settings.gd")
-const Protocol = preload("res://scripts/protocol.gd")
 const UiText = preload("res://scripts/ui_text.gd")
 const UiConfig = preload("res://scripts/app/ui_config.gd")
 const AppBootstrap = preload("res://scripts/app/app_bootstrap.gd")
 
 # Protocol services
 const UdpClient = preload("res://scripts/protocol/udp_client.gd")
-const CanLogFormatter = preload("res://scripts/protocol/can_log_formatter.gd")
-const MessageDispatcher = preload("res://scripts/protocol/message_dispatcher.gd")
 
 # Controllers
 const MotorController = preload("res://scripts/controllers/motor_controller.gd")
