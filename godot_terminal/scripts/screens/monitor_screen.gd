@@ -3,13 +3,23 @@ extends RefCounted
 const UiTheme = preload("res://scripts/theme/ui_theme.gd")
 const AppChrome = preload("res://scripts/screens/app_chrome.gd")
 
+const COMMAND_RAIL_RECT := Rect2(18, 140, 188, 360)
+const TELEMETRY_GRID_RECT := Rect2(224, 140, 478, 190)
+const WAVEFORM_PANEL_RECT := Rect2(224, 346, 478, 196)
+const HOTKEY_PANEL_RECT := Rect2(18, 516, 188, 88)
+const INPUT_DEBUG_RECT := Rect2(224, 558, 478, 46)
+const TELEMETRY_CARD_SIZE := Vector2(138, 52)
+const TELEMETRY_COLUMN_STEP: float = 150.0
+const TELEMETRY_ROW_STEP: float = 62.0
+const WAVEFORM_MAX_POINTS: int = 96
+
 
 static func draw(canvas: CanvasItem, font: Font, t: Callable, command_items: Array, selected_index: int, motor, raw_ok: bool, last_input_label: String) -> void:
-	AppChrome.draw_action_rail(canvas, font, t, Rect2(18, 140, 188, 360), command_items, selected_index)
-	_draw_telemetry_grid(canvas, font, t, Rect2(224, 140, 478, 190), motor)
-	_draw_waveform_panel(canvas, font, t, Rect2(224, 346, 478, 196), motor)
-	_draw_command_matrix(canvas, font, t, Rect2(18, 516, 188, 88))
-	_draw_live_debug(canvas, font, t, Rect2(224, 558, 478, 46), raw_ok, last_input_label)
+	AppChrome.draw_action_rail(canvas, font, t, COMMAND_RAIL_RECT, command_items, selected_index)
+	_draw_telemetry_grid(canvas, font, t, TELEMETRY_GRID_RECT, motor)
+	_draw_waveform_panel(canvas, font, t, WAVEFORM_PANEL_RECT, motor)
+	_draw_command_matrix(canvas, font, t, HOTKEY_PANEL_RECT)
+	_draw_live_debug(canvas, font, t, INPUT_DEBUG_RECT, raw_ok, last_input_label)
 
 
 static func _draw_telemetry_grid(canvas: CanvasItem, font: Font, t: Callable, rect: Rect2, motor) -> void:
@@ -27,9 +37,9 @@ static func _draw_telemetry_grid(canvas: CanvasItem, font: Font, t: Callable, re
 	for row in 2:
 		for col in 3:
 			var card = cards[idx]
-			var x = rect.position.x + 16 + col * 150
-			var y = rect.position.y + 46 + row * 62
-			_draw_metric_card(canvas, font, Rect2(x, y, 138, 52), card[0], card[1], card[2], card[3])
+			var x = rect.position.x + 16 + col * TELEMETRY_COLUMN_STEP
+			var y = rect.position.y + 46 + row * TELEMETRY_ROW_STEP
+			_draw_metric_card(canvas, font, Rect2(Vector2(x, y), TELEMETRY_CARD_SIZE), card[0], card[1], card[2], card[3])
 			idx += 1
 
 
@@ -55,7 +65,7 @@ static func _draw_waveform_panel(canvas: CanvasItem, font: Font, t: Callable, re
 	canvas.draw_rect(plot, UiTheme.C_LINE, false, 1.0)
 
 	var vals = motor.speed_history
-	var n = min(vals.size(), 96)
+	var n = min(vals.size(), WAVEFORM_MAX_POINTS)
 	if n < 2:
 		AppChrome.draw_text(canvas, font, t.call("waiting_packets"), plot.position.x, plot.position.y + plot.size.y * 0.5 - 8, UiTheme.C_DIM, 15, HORIZONTAL_ALIGNMENT_CENTER, plot.size.x)
 		return

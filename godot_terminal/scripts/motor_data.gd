@@ -8,23 +8,23 @@ class_name MotorData
 
 const AppSettings = preload("res://scripts/settings.gd")
 
-var current = 0.0
-var voltage = 0.0
-var speed = 0
-var position = 0.0
-var torque = 0.0
-var status_word = 0
-var fault_code = 0
-var mode = 0
-var alive = false
-var wdg_ms = 0
+var current: float = 0.0
+var voltage: float = 0.0
+var speed: int = 0
+var position: float = 0.0
+var torque: float = 0.0
+var status_word: int = 0
+var fault_code: int = 0
+var mode: int = 0
+var alive: bool = false
+var wdg_ms: int = 0
 
 var timestamps: Array[float] = []
 var current_history: Array[float] = []
 var speed_history: Array[float] = []
 var torque_history: Array[float] = []
 
-var _start_msec = Time.get_ticks_msec()
+var _start_msec: int = Time.get_ticks_msec()
 
 
 func update_from_dict(data: Dictionary) -> void:
@@ -49,8 +49,8 @@ func update_from_dict(data: Dictionary) -> void:
 	if data.has("status_word"):
 		status_word = _parse_status_word(data["status_word"])
 
-	var t = float(Time.get_ticks_msec() - _start_msec) / 1000.0
-	_push_history(timestamps, t)
+	var elapsed_seconds: float = float(Time.get_ticks_msec() - _start_msec) / 1000.0
+	_push_history(timestamps, elapsed_seconds)
 	_push_history(current_history, current)
 	_push_history(speed_history, float(speed))
 	_push_history(torque_history, torque)
@@ -68,7 +68,7 @@ func get_waveform_data(param: String) -> Array:
 
 
 func get_status_text() -> String:
-	var sw = status_word
+	var sw: int = status_word
 	if sw & 0x004F == 0x0000:
 		return "Not Ready"
 	if sw & 0x004F == 0x0040:
@@ -88,21 +88,21 @@ func is_fault() -> bool:
 	return (status_word & 0x0008) != 0 or fault_code != 0
 
 
-func _push_history(target: Array, value: float) -> void:
+func _push_history(target: Array[float], value: float) -> void:
 	target.append(value)
 	while target.size() > AppSettings.WAVEFORM_HISTORY:
 		target.pop_front()
 
 
-func _parse_status_word(value) -> int:
+func _parse_status_word(value: Variant) -> int:
 	if typeof(value) == TYPE_INT:
 		return int(value)
 	if typeof(value) == TYPE_FLOAT:
 		return int(value)
-	var s = str(value).strip_edges()
-	if s.begins_with("0x") or s.begins_with("0X"):
-		return s.substr(2).hex_to_int()
-	return int(s)
+	var text: String = str(value).strip_edges()
+	if text.begins_with("0x") or text.begins_with("0X"):
+		return text.substr(2).hex_to_int()
+	return int(text)
 
 
 func _hex(value: int, width: int = 4) -> String:
