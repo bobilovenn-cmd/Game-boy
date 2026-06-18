@@ -25,6 +25,7 @@ const OtaTransferController = preload("res://scripts/controllers/ota_transfer_co
 const SessionController = preload("res://scripts/controllers/session_controller.gd")  # 语言和节点会话
 const PageCommandController = preload("res://scripts/controllers/page_command_controller.gd")  # 页面命令分发
 const FirmwareController = preload("res://scripts/controllers/firmware_controller.gd")  # 固件加载工作流
+const GlobalActionController = preload("res://scripts/controllers/global_action_controller.gd")  # 全局快捷键动作
 const MotorDataScript = preload("res://scripts/motor_data.gd")  # 电机数据模型
 const CanLogState = preload("res://scripts/models/can_log_state.gd")  # CAN日志状态
 const ConnectionState = preload("res://scripts/models/connection_state.gd")  # UDP连接状态
@@ -72,6 +73,7 @@ var ota_transfer = OtaTransferController.new() # OTA传输控制器
 var app_session = SessionController.new()    # 语言和节点会话控制器
 var page_commands = PageCommandController.new() # 页面命令控制器
 var firmware_controller = FirmwareController.new() # 固件加载控制器
+var global_actions = GlobalActionController.new() # 全局动作控制器
 var can_log = CanLogState.new()             # CAN日志状态
 var connection = ConnectionState.new()      # UDP连接运行状态
 var ota = OtaState.new()                    # OTA升级状态
@@ -223,27 +225,21 @@ func _handle_action(action: String) -> void:
 		_handle_numeric_input_action(action)
 		return
 
-	match action:
-		"menu", "up", "down", "left", "right", "confirm":
-			_handle_navigation_action(action)
-		"back":
-			_send(motor_controller.jog_stop(), "Jog stopped")
-		"enable":
-			_send(motor_controller.enable(), "Enable sent")
-		"disable":
-			_send(motor_controller.disable(), "Disable sent")
-		"estop":
-			_send(motor_controller.estop(), "E-STOP sent", "error")
-		"jog_cw":
-			_send(motor_controller.jog_cw(), "Jog CW %d" % motor_controller.target_speed)
-		"jog_ccw":
-			_send(motor_controller.jog_ccw(), "Jog CCW %d" % motor_controller.target_speed)
-		"jog_stop":
-			_send(motor_controller.jog_stop(), "Jog stopped")
-		"r2":
-			_set_status("R2 reserved")
-		"stick_press":
-			pass
+	_apply_global_action(global_actions.resolve(action, motor_controller))
+
+
+func _apply_global_action(result: Dictionary) -> void:
+	match str(result.get("event", "")):
+		"navigate":
+			_handle_navigation_action(str(result.get("action", "")))
+		"send":
+			_send(
+				str(result.get("message", "")),
+				str(result.get("ui_message", "")),
+				str(result.get("kind", "info"))
+			)
+		"status":
+			_set_status(str(result.get("message", "")), str(result.get("kind", "info")))
 		"language_select":
 			_return_to_language_select()
 
