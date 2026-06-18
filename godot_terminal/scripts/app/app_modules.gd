@@ -24,6 +24,7 @@ const SessionController = preload("res://scripts/controllers/session_controller.
 const PageCommandController = preload("res://scripts/controllers/page_command_controller.gd")
 const FirmwareController = preload("res://scripts/controllers/firmware_controller.gd")
 const GlobalActionController = preload("res://scripts/controllers/global_action_controller.gd")
+const RuntimeController = preload("res://scripts/controllers/runtime_controller.gd")
 
 # Models
 const MotorData = preload("res://scripts/motor_data.gd")
