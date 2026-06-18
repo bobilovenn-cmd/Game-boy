@@ -24,6 +24,7 @@ const NavigationController = preload("res://scripts/controllers/navigation_contr
 const OtaTransferController = preload("res://scripts/controllers/ota_transfer_controller.gd")  # OTA分块传输
 const SessionController = preload("res://scripts/controllers/session_controller.gd")  # 语言和节点会话
 const PageCommandController = preload("res://scripts/controllers/page_command_controller.gd")  # 页面命令分发
+const FirmwareController = preload("res://scripts/controllers/firmware_controller.gd")  # 固件加载工作流
 const MotorDataScript = preload("res://scripts/motor_data.gd")  # 电机数据模型
 const CanLogState = preload("res://scripts/models/can_log_state.gd")  # CAN日志状态
 const ConnectionState = preload("res://scripts/models/connection_state.gd")  # UDP连接状态
@@ -70,6 +71,7 @@ var navigation = NavigationController.new()  # 页面导航控制器
 var ota_transfer = OtaTransferController.new() # OTA传输控制器
 var app_session = SessionController.new()    # 语言和节点会话控制器
 var page_commands = PageCommandController.new() # 页面命令控制器
+var firmware_controller = FirmwareController.new() # 固件加载控制器
 var can_log = CanLogState.new()             # CAN日志状态
 var connection = ConnectionState.new()      # UDP连接运行状态
 var ota = OtaState.new()                    # OTA升级状态
@@ -329,9 +331,9 @@ func _apply_page_command(command: Dictionary) -> void:
 		"open_upload":
 			_open_upload_mode()
 		"load_firmware":
-			_load_default_firmware()
+			_apply_firmware_result(firmware_controller.load_default(ota, AppSettings.FIRMWARE_PATHS))
 		"start_ota":
-			_start_ota_transfer()
+			_apply_firmware_result(firmware_controller.start_transfer(ota, AppSettings.FIRMWARE_PATHS, Time.get_ticks_msec()))
 		"open_filter":
 			can_filter.start()
 		"clear_can_log":
@@ -350,7 +352,7 @@ func _open_upload_mode() -> void:
 func _close_upload_mode() -> void:
 	upload_mode.close_upload(AppSettings.UPLOAD_MODE_SCRIPT)
 	if FileAccess.file_exists("/storage/firmware.bin"):
-		_load_default_firmware()
+		_apply_firmware_result(firmware_controller.load_default(ota, AppSettings.FIRMWARE_PATHS))
 	_set_status(_t("upload_restore_status"))
 
 
@@ -449,18 +451,9 @@ func _process_ota(now: int) -> void:
 		_send(message)
 
 
-func _load_default_firmware() -> bool:
-	if ota.load_from_paths(AppSettings.FIRMWARE_PATHS):
-		_set_status("Firmware loaded")
-		return true
-	_set_status("No firmware found", "warn")
-	return false
-
-
-func _start_ota_transfer() -> void:
-	if ota.firmware_data.is_empty() and not _load_default_firmware():
-		return
-	ota.start_transfer(Time.get_ticks_msec())
+func _apply_firmware_result(result: Dictionary) -> void:
+	if result.has("status_message"):
+		_set_status(str(result.get("status_message", "")), str(result.get("status_kind", "info")))
 
 
 func _draw_background() -> void:
