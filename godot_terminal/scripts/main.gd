@@ -22,6 +22,7 @@ const NumericInputController = preload("res://scripts/controllers/numeric_input_
 const CanFilterController = preload("res://scripts/controllers/can_filter_controller.gd")  # CAN过滤键盘
 const NavigationController = preload("res://scripts/controllers/navigation_controller.gd")  # 页面导航
 const OtaTransferController = preload("res://scripts/controllers/ota_transfer_controller.gd")  # OTA分块传输
+const SessionController = preload("res://scripts/controllers/session_controller.gd")  # 语言和节点会话
 const MotorDataScript = preload("res://scripts/motor_data.gd")  # 电机数据模型
 const CanLogState = preload("res://scripts/models/can_log_state.gd")  # CAN日志状态
 const OtaState = preload("res://scripts/models/ota_state.gd")  # OTA状态
@@ -65,19 +66,11 @@ var numeric_input = NumericInputController.new() # 数字输入控制器
 var can_filter = CanFilterController.new()   # CAN过滤输入控制器
 var navigation = NavigationController.new()  # 页面导航控制器
 var ota_transfer = OtaTransferController.new() # OTA传输控制器
+var app_session = SessionController.new()    # 语言和节点会话控制器
 var can_log = CanLogState.new()             # CAN日志状态
 var ota = OtaState.new()                    # OTA升级状态
 var status = StatusState.new()              # 状态提示
 var raw_input = RawInputReader.new()        # /dev/input/js0读取器
-
-## 语言选择状态
-var language_selected = false               # 是否已选择语言
-var selected_language = 0                   # 当前选中的语言索引
-var ui_lang = UiText.LANG_ZH               # 当前界面语言
-
-## 节点选择状态
-var node_selected = false                   # 是否已选择电机节点
-var selected_node_id = AppSettings.DEFAULT_NODE_ID  # 当前控制节点
 
 var result_msg = ""                         # SDO读取结果
 
@@ -94,7 +87,7 @@ var godot_axis_active = {}                  # fallback 轴输入去抖状态
 
 ## 应用初始化
 func _ready() -> void:
-	motor_controller.configure_node(selected_node_id)
+	motor_controller.configure_node(app_session.selected_node_id)
 	navigation.reset(TAB_KEYS.size())
 
 	font = AppBootstrap.load_ui_font(self)
@@ -119,10 +112,10 @@ func _process(_delta: float) -> void:
 	# 处理手柄输入队列
 	_drain_raw_input()
 	# 语言未选择时只渲染语言选择界面
-	if not language_selected:
+	if not app_session.language_selected:
 		queue_redraw()
 		return
-	if not node_selected:
+	if not app_session.node_selected:
 		queue_redraw()
 		return
 
@@ -155,11 +148,11 @@ func _input(event: InputEvent) -> void:
 ## 渲染入口 - 根据当前状态绘制对应界面
 func _draw() -> void:
 	_draw_background()           # 绘制网格背景
-	if not language_selected:
+	if not app_session.language_selected:
 		_draw_language_select()  # 语言选择界面
 		_draw_status_overlay()
 		return
-	if not node_selected:
+	if not app_session.node_selected:
 		_draw_node_select()      # 节点选择界面
 		_draw_status_overlay()
 		return
@@ -270,10 +263,10 @@ func _handle_key(keycode: int) -> void:
 
 
 func _handle_action(action: String) -> void:
-	if not language_selected:
+	if not app_session.language_selected:
 		_handle_language_action(action)
 		return
-	if not node_selected:
+	if not app_session.node_selected:
 		_handle_node_action(action)
 		return
 	if upload_mode.open:
@@ -312,24 +305,13 @@ func _handle_action(action: String) -> void:
 
 
 func _handle_language_action(action: String) -> void:
-	match action:
-		"up", "left":
-			selected_language = max(0, selected_language - 1)
-			if selected_language < LANGUAGE_OPTIONS.size():
-				ui_lang = LANGUAGE_OPTIONS[selected_language]
-		"down", "right":
-			selected_language = min(2, selected_language + 1)
-			if selected_language < LANGUAGE_OPTIONS.size():
-				ui_lang = LANGUAGE_OPTIONS[selected_language]
-		"confirm":
-			if selected_language == 2:
-				OS.execute("poweroff", [])
-			else:
-				language_selected = true
-				node_selected = false
-				node_selector.reset()
-				ui_lang = LANGUAGE_OPTIONS[selected_language]
-				_set_status("LANGUAGE %s" % ui_lang.to_upper())
+	var result = app_session.handle_language_action(action, LANGUAGE_OPTIONS)
+	match str(result.get("event", "")):
+		"shutdown":
+			OS.execute("poweroff", [])
+		"language_selected":
+			node_selector.reset()
+			_set_status("LANGUAGE %s" % app_session.ui_lang.to_upper())
 
 
 func _handle_node_action(action: String) -> void:
@@ -360,23 +342,19 @@ func _navigation_max_indices() -> Array[int]:
 
 
 func _confirm_node_input(value: int) -> void:
-	selected_node_id = value
-	motor_controller.configure_node(selected_node_id)
-	node_selected = true
+	app_session.select_node(value)
+	motor_controller.configure_node(app_session.selected_node_id)
 	navigation.reset(TAB_KEYS.size())
 	motor = MotorDataScript.new()
 	last_rx_msec = 0
 	result_msg = ""
 	node_selector.error_msg = ""
 	can_log.clear()
-	_set_status(_t("node_selected_status") % selected_node_id)
+	_set_status(_t("node_selected_status") % app_session.selected_node_id)
 
 
 func _return_to_language_select() -> void:
-	var idx = LANGUAGE_OPTIONS.find(ui_lang)
-	selected_language = idx if idx >= 0 else 0
-	language_selected = false
-	node_selected = false
+	app_session.return_to_language_select(LANGUAGE_OPTIONS)
 	node_selector.reset()
 	status.clear()
 
@@ -406,10 +384,10 @@ func _confirm_current_selection() -> void:
 		var index: int = item[1]
 		var sub: int = item[2]
 		if name_key == "cfg_save_eeprom":
-			_send(Protocol.sdo_write(selected_node_id, index, sub, 0x65766173), "Save EEPROM")
+			_send(Protocol.sdo_write(app_session.selected_node_id, index, sub, 0x65766173), "Save EEPROM")
 		else:
 			result_msg = "Reading 0x%s..." % _hex(index)
-			_send(Protocol.sdo_read(selected_node_id, index, sub), result_msg)
+			_send(Protocol.sdo_read(app_session.selected_node_id, index, sub), result_msg)
 	elif tab == 2:
 		match index:
 			0:
@@ -422,7 +400,7 @@ func _confirm_current_selection() -> void:
 				_send(Protocol.ota_verify(), "Verify requested")
 				_log_ota("Requesting MD5 verify")
 			4:
-				_send(Protocol.ota_flash(selected_node_id), "Flash command sent")
+				_send(Protocol.ota_flash(app_session.selected_node_id), "Flash command sent")
 				_log_ota("Flash command sent")
 	elif tab == 3:
 		match index:
@@ -514,7 +492,7 @@ func _record_can_row(raw: String, data: Dictionary) -> void:
 ## 消息分发处理 - 根据cmd字段路由到对应处理器
 func _handle_message(data: Dictionary) -> void:
 	last_rx_msec = Time.get_ticks_msec()
-	var result = message_dispatcher.handle(data, selected_node_id, motor, ota)
+	var result = message_dispatcher.handle(data, app_session.selected_node_id, motor, ota)
 	if result.has("result_msg"):
 		result_msg = str(result.get("result_msg", ""))
 	if result.has("status_message"):
@@ -562,7 +540,7 @@ func _draw_background() -> void:
 
 
 func _draw_language_select() -> void:
-	LanguageScreen.draw(self, font, Callable(self, "_t"), selected_language)
+	LanguageScreen.draw(self, font, Callable(self, "_t"), app_session.selected_language)
 
 
 func _draw_node_select() -> void:
@@ -570,7 +548,7 @@ func _draw_node_select() -> void:
 
 
 func _draw_header() -> void:
-	AppChrome.draw_header(self, font, Callable(self, "_t"), motor, last_rx_msec, udp_ready, selected_node_id)
+	AppChrome.draw_header(self, font, Callable(self, "_t"), motor, last_rx_msec, udp_ready, app_session.selected_node_id)
 
 
 func _draw_tabs() -> void:
@@ -614,7 +592,7 @@ func _draw_footer() -> void:
 
 
 func _t(key: String) -> String:
-	return UiText.text(ui_lang, key)
+	return UiText.text(app_session.ui_lang, key)
 
 
 func _tab_name(index: int) -> String:
