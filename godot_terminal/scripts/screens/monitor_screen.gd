@@ -28,7 +28,7 @@ static func _draw_telemetry_grid(canvas: CanvasItem, font: Font, t: Callable, re
 	var cards = [
 		[t.call("metric_current"), "%.2f" % motor.current, "A", UiTheme.C_ACCENT],
 		[t.call("metric_voltage"), "%.1f" % motor.voltage, "V", UiTheme.C_ACCENT_2],
-		[t.call("metric_speed"), "%d" % motor.speed, "rpm", UiTheme.C_WARN],
+		[t.call("metric_speed"), "%d" % motor.speed, "pulse/s", UiTheme.C_WARN],
 		[t.call("metric_position"), "%.1f" % motor.position, "deg", UiTheme.C_TEXT],
 		[t.call("metric_torque"), "%.2f" % motor.torque, "Nm", UiTheme.C_GREEN],
 		[t.call("metric_status"), motor.get_status_text(), "", UiTheme.C_RED if motor.is_fault() else UiTheme.C_GREEN],
