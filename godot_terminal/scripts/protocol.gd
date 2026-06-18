@@ -6,6 +6,8 @@
 extends RefCounted
 class_name Protocol
 
+const CommandSchema = preload("res://scripts/protocol/command_schema.gd")
+
 static var _seq_counter = 0
 
 static func _next_seq() -> int:
@@ -14,13 +16,12 @@ static func _next_seq() -> int:
 
 
 static func _build(cmd: String, payload: Dictionary = {}) -> String:
-	var msg = {
-		"cmd": cmd,
-		"seq": _next_seq(),
-		"ts": int(Time.get_unix_time_from_system()),
-	}
-	if not payload.is_empty():
-		msg["payload"] = payload
+	var msg = CommandSchema.build_envelope(
+		cmd,
+		_next_seq(),
+		int(Time.get_unix_time_from_system()),
+		payload
+	)
 	return JSON.stringify(msg)
 
 
@@ -104,6 +105,15 @@ static func ota_verify() -> String:
 
 static func ota_flash(node: int = 1) -> String:
 	return _build("ota_flash", {"node": node})
+
+
+static func car_move(left_node: int, right_node: int, left_speed: int, right_speed: int) -> String:
+	return _build("car_move", {
+		"left_node": left_node,
+		"right_node": right_node,
+		"left_speed": left_speed,
+		"right_speed": right_speed,
+	})
 
 
 static func parse(data: String) -> Dictionary:
