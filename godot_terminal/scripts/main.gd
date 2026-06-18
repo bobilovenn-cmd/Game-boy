@@ -216,11 +216,7 @@ func _handle_godot_joy_button(button_index: int, pressed: bool) -> void:
 
 
 func _handle_godot_joy_motion(axis: int, value: float) -> void:
-	var action = ""
-	if axis == 4:
-		action = "estop"
-	elif axis == 5:
-		action = "r2"
+	var action = InputMapper.godot_axis_action(axis)
 	if action == "":
 		return
 
@@ -235,31 +231,9 @@ func _handle_godot_joy_motion(axis: int, value: float) -> void:
 
 
 func _handle_key(keycode: int) -> void:
-	match keycode:
-		KEY_TAB:
-			_handle_action("menu")
-		KEY_UP:
-			_handle_action("up")
-		KEY_DOWN:
-			_handle_action("down")
-		KEY_LEFT:
-			_handle_action("left")
-		KEY_RIGHT:
-			_handle_action("right")
-		KEY_ENTER, KEY_KP_ENTER, KEY_SPACE:
-			_handle_action("confirm")
-		KEY_ESCAPE:
-			_handle_action("back")
-		KEY_X:
-			_handle_action("enable")
-		KEY_Y:
-			_handle_action("disable")
-		KEY_Q:
-			_handle_action("jog_ccw")
-		KEY_E:
-			_handle_action("jog_cw")
-		KEY_S:
-			_handle_action("estop")
+	var action = InputMapper.keyboard_action(keycode)
+	if action != "":
+		_handle_action(action)
 
 
 func _handle_action(action: String) -> void:
