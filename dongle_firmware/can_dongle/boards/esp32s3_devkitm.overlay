@@ -1,0 +1,29 @@
+/ {
+	aliases {
+		can0 = &twai;
+	};
+
+	chosen {
+		zephyr,console = &usb_serial;
+		zephyr,shell-uart = &usb_serial;
+	};
+};
+
+&wifi {
+	status = "okay";
+};
+
+&usb_serial {
+	status = "okay";
+};
+
+&uart0 {
+	status = "disabled";
+};
+
+&twai {
+	status = "okay";
+	bus-speed = <1000000>;
+	pinctrl-0 = <&twai_default>;
+	pinctrl-names = "default";
+};

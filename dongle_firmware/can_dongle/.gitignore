@@ -1,0 +1,20 @@
+# Zephyr build artifacts
+build*/
+.debug/
+.snapshots/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc
+*.swp
+*.swo
+*~
+
+# Local Wi-Fi credentials, never commit this file
+src/wifi_secrets.h
