@@ -27,6 +27,7 @@ const CanLogState = preload("res://scripts/models/can_log_state.gd")  # CAN日�
 const OtaState = preload("res://scripts/models/ota_state.gd")  # OTA状态
 const StatusState = preload("res://scripts/models/status_state.gd")  # 状态提示
 const UiText = preload("res://scripts/ui_text.gd")          # 国际化文本
+const AppBootstrap = preload("res://scripts/app/app_bootstrap.gd") # 启动初始化
 const UiConfig = preload("res://scripts/app/ui_config.gd")   # UI页面配置
 const InputMapper = preload("res://scripts/input/input_mapper.gd")  # 按键映射
 const RawInputReader = preload("res://scripts/input/raw_input_reader.gd")  # RGB30原始输入读取
@@ -96,28 +97,14 @@ func _ready() -> void:
 	motor_controller.configure_node(selected_node_id)
 	navigation.reset(TAB_KEYS.size())
 
-	# 加载打包的CJK字体(支持中英文)，失败则回退到系统字体
-	var cjk_font = ResourceLoader.load("res://fonts/AGV_CJK.ttf", "", ResourceLoader.CACHE_MODE_REUSE)
-	if cjk_font:
-		font = cjk_font
-	else:
-		font = get_theme_default_font()
-		if font == null:
-			font = ThemeDB.fallback_font
+	font = AppBootstrap.load_ui_font(self)
+	var udp_result = AppBootstrap.configure_udp(udp_client)
+	udp_ready = bool(udp_result.get("ok", false))
+	_set_status(str(udp_result.get("message", "")), str(udp_result.get("kind", "info")))
 
-	# 绑定本地UDP端口，设置目标地址(ESP32网关)
-	udp_client.configure(AppSettings.LOCAL_UDP_PORT, AppSettings.DONGLE_IP, AppSettings.DONGLE_UDP_PORT)
-	var err = udp_client.bind_any()
-	if err == OK:
-		udp_ready = true
-		_set_status("UDP ready 0.0.0.0:%d -> %s:%d" % [AppSettings.LOCAL_UDP_PORT, AppSettings.DONGLE_IP, AppSettings.DONGLE_UDP_PORT])
-	else:
-		_set_status("UDP bind failed: %d" % err, "error")
-
-	# 启动手柄输入线程
-	var raw_err = raw_input.start()
-	if raw_err != OK:
-		_set_status("Raw input thread failed; using Godot joypad fallback", "warn")
+	var raw_result = AppBootstrap.start_raw_input(raw_input)
+	if not bool(raw_result.get("ok", false)):
+		_set_status(str(raw_result.get("message", "")), str(raw_result.get("kind", "warn")))
 	_log_ota("Godot terminal ready")
 	set_process(true)
 
