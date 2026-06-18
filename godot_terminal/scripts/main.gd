@@ -37,7 +37,7 @@ var ota_transfer = Modules.OtaTransferController.new() # OTA传输控制器
 var app_session = Modules.SessionController.new()    # 语言和节点会话控制器
 var page_commands = Modules.PageCommandController.new() # 页面命令控制器
 var firmware_controller = Modules.FirmwareController.new() # 固件加载控制器
-var global_actions = Modules.GlobalActionController.new() # 全局动作控制器
+var interaction = Modules.InteractionController.new() # 模态与全局交互协调器
 var runtime = Modules.RuntimeController.new()         # 主循环运行调度器
 var can_log = Modules.CanLogState.new()             # CAN日志状态
 var connection = Modules.ConnectionState.new()      # UDP连接运行状态
@@ -174,27 +174,48 @@ func _apply_input_result(result: Dictionary) -> void:
 
 
 func _handle_action(action: String) -> void:
-	if not app_session.language_selected:
-		_handle_language_action(action)
-		return
-	if not app_session.node_selected:
-		_handle_node_action(action)
-		return
-	if upload_mode.open:
-		_handle_upload_mode_action(action)
-		return
-	if can_filter.open:
-		_handle_filter_input_action(action)
-		return
-	if numeric_input.open:
-		_handle_numeric_input_action(action)
-		return
+	var result = interaction.resolve(
+		action,
+		app_session,
+		upload_mode,
+		can_filter,
+		numeric_input,
+		node_selector,
+		motor_controller,
+		can_log,
+		LANGUAGE_OPTIONS,
+		NODE_KEY_ROWS,
+		NUMERIC_KEY_ROWS,
+		KEYBOARD_ROWS,
+		_t("node_error_empty"),
+		_t("node_error_range")
+	)
+	_apply_interaction_event(result)
 
-	_apply_global_action(global_actions.resolve(action, motor_controller))
 
-
-func _apply_global_action(result: Dictionary) -> void:
+func _apply_interaction_event(result: Dictionary) -> void:
 	match str(result.get("event", "")):
+		"shutdown":
+			OS.execute("poweroff", [])
+		"language_selected":
+			node_selector.reset()
+			_set_status("LANGUAGE %s" % app_session.ui_lang.to_upper())
+		"node_selected":
+			_confirm_node_input(int(result.get("node", Modules.AppSettings.DEFAULT_NODE_ID)))
+		"close_upload":
+			_close_upload_mode()
+		"numeric_error":
+			if str(result.get("kind", "")) == "speed_range":
+				_set_status(_t("motion_speed_range"), "error")
+			else:
+				_set_status(_t("motion_input_empty"), "warn")
+		"numeric_selected":
+			_confirm_numeric_input(str(result.get("kind", "")), int(result.get("value", 0)))
+		"filter_changed":
+			can_log.filter = str(result.get("filter", can_log.filter))
+		"filter_selected":
+			can_log.filter = str(result.get("filter", can_log.filter))
+			_set_status(_t("can_filter_label") + ": " + (can_log.filter if can_log.filter != "" else _t("can_all")))
 		"navigate":
 			_handle_navigation_action(str(result.get("action", "")))
 		"send":
@@ -207,25 +228,6 @@ func _apply_global_action(result: Dictionary) -> void:
 			_set_status(str(result.get("message", "")), str(result.get("kind", "info")))
 		"language_select":
 			_return_to_language_select()
-
-
-func _handle_language_action(action: String) -> void:
-	var result = app_session.handle_language_action(action, LANGUAGE_OPTIONS)
-	match str(result.get("event", "")):
-		"shutdown":
-			OS.execute("poweroff", [])
-		"language_selected":
-			node_selector.reset()
-			_set_status("LANGUAGE %s" % app_session.ui_lang.to_upper())
-
-
-func _handle_node_action(action: String) -> void:
-	var result = node_selector.handle_action(action, NODE_KEY_ROWS, _t("node_error_empty"), _t("node_error_range"))
-	match str(result.get("event", "")):
-		"back":
-			_return_to_language_select()
-		"selected":
-			_confirm_node_input(int(result.get("node", Modules.AppSettings.DEFAULT_NODE_ID)))
 
 
 func _handle_navigation_action(action: String) -> void:
@@ -317,28 +319,8 @@ func _close_upload_mode() -> void:
 	_set_status(_t("upload_restore_status"))
 
 
-func _handle_upload_mode_action(action: String) -> void:
-	match action:
-		"confirm", "back", "language_select":
-			_close_upload_mode()
-
-
 func _open_numeric_input(kind: String) -> void:
 	numeric_input.start(kind, motor_controller.target_speed)
-
-
-func _handle_numeric_input_action(action: String) -> void:
-	var result = numeric_input.handle_action(action, NUMERIC_KEY_ROWS)
-	match str(result.get("event", "")):
-		"language_select":
-			_return_to_language_select()
-		"error":
-			if str(result.get("kind", "")) == "speed_range":
-				_set_status(_t("motion_speed_range"), "error")
-			else:
-				_set_status(_t("motion_input_empty"), "warn")
-		"selected":
-			_confirm_numeric_input(str(result.get("kind", "")), int(result.get("value", 0)))
 
 
 func _confirm_numeric_input(kind: String, value: int) -> void:
@@ -349,18 +331,6 @@ func _confirm_numeric_input(kind: String, value: int) -> void:
 		_send(motor_controller.set_target_speed(value), _t("motion_speed_sent") % motor_controller.target_speed)
 	else:
 		_send(motor_controller.move_position(value), _t("motion_position_sent"))
-
-
-func _handle_filter_input_action(action: String) -> void:
-	var result = can_filter.handle_action(action, KEYBOARD_ROWS, can_log.filter)
-	if result.has("filter"):
-		can_log.filter = str(result.get("filter", can_log.filter))
-	match str(result.get("event", "")):
-		"language_select":
-			_return_to_language_select()
-		"selected":
-			_set_status(_t("can_filter_label") + ": " + (can_log.filter if can_log.filter != "" else _t("can_all")))
-
 
 func _apply_runtime_event(event: Dictionary) -> void:
 	if event.has("result_msg"):

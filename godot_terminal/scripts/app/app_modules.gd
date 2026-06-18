@@ -23,7 +23,7 @@ const OtaTransferController = preload("res://scripts/controllers/ota_transfer_co
 const SessionController = preload("res://scripts/controllers/session_controller.gd")
 const PageCommandController = preload("res://scripts/controllers/page_command_controller.gd")
 const FirmwareController = preload("res://scripts/controllers/firmware_controller.gd")
-const GlobalActionController = preload("res://scripts/controllers/global_action_controller.gd")
+const InteractionController = preload("res://scripts/controllers/interaction_controller.gd")
 const RuntimeController = preload("res://scripts/controllers/runtime_controller.gd")
 
 # Models
