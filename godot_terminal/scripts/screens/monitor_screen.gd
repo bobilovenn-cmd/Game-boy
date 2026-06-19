@@ -1,0 +1,105 @@
+extends RefCounted
+
+const UiTheme = preload("res://scripts/theme/ui_theme.gd")
+const AppChrome = preload("res://scripts/screens/app_chrome.gd")
+
+const COMMAND_RAIL_RECT := Rect2(18, 140, 188, 360)
+const TELEMETRY_GRID_RECT := Rect2(224, 140, 478, 190)
+const WAVEFORM_PANEL_RECT := Rect2(224, 346, 478, 196)
+const HOTKEY_PANEL_RECT := Rect2(18, 516, 188, 88)
+const INPUT_DEBUG_RECT := Rect2(224, 558, 478, 46)
+const TELEMETRY_CARD_SIZE := Vector2(138, 52)
+const TELEMETRY_COLUMN_STEP: float = 150.0
+const TELEMETRY_ROW_STEP: float = 62.0
+const WAVEFORM_MAX_POINTS: int = 96
+
+
+static func draw(canvas: CanvasItem, font: Font, t: Callable, command_items: Array, selected_index: int, motor, raw_ok: bool, last_input_label: String) -> void:
+	AppChrome.draw_action_rail(canvas, font, t, COMMAND_RAIL_RECT, command_items, selected_index)
+	_draw_telemetry_grid(canvas, font, t, TELEMETRY_GRID_RECT, motor)
+	_draw_waveform_panel(canvas, font, t, WAVEFORM_PANEL_RECT, motor)
+	_draw_command_matrix(canvas, font, t, HOTKEY_PANEL_RECT)
+	_draw_live_debug(canvas, font, t, INPUT_DEBUG_RECT, raw_ok, last_input_label)
+
+
+static func _draw_telemetry_grid(canvas: CanvasItem, font: Font, t: Callable, rect: Rect2, motor) -> void:
+	AppChrome.draw_panel(canvas, rect, UiTheme.C_PANEL, UiTheme.C_LINE)
+	AppChrome.draw_text(canvas, font, t.call("telemetry"), rect.position.x + 18, rect.position.y + 18, UiTheme.C_DIM, 14)
+	var cards = [
+		[t.call("metric_current"), "%.2f" % motor.current, "A", UiTheme.C_ACCENT],
+		[t.call("metric_voltage"), "%.1f" % motor.voltage, "V", UiTheme.C_ACCENT_2],
+		[t.call("metric_speed"), "%d" % motor.speed, "pulse/s", UiTheme.C_WARN],
+		[t.call("metric_position"), "%.1f" % motor.position, "deg", UiTheme.C_TEXT],
+		[t.call("metric_torque"), "%.2f" % motor.torque, "Nm", UiTheme.C_GREEN],
+		[t.call("metric_status"), motor.get_status_text(), "", UiTheme.C_RED if motor.is_fault() else UiTheme.C_GREEN],
+	]
+	var idx = 0
+	for row in 2:
+		for col in 3:
+			var card = cards[idx]
+			var x = rect.position.x + 16 + col * TELEMETRY_COLUMN_STEP
+			var y = rect.position.y + 46 + row * TELEMETRY_ROW_STEP
+			_draw_metric_card(canvas, font, Rect2(Vector2(x, y), TELEMETRY_CARD_SIZE), card[0], card[1], card[2], card[3])
+			idx += 1
+
+
+static func _draw_metric_card(canvas: CanvasItem, font: Font, rect: Rect2, label: String, value: String, unit: String, color: Color) -> void:
+	canvas.draw_rect(rect, UiTheme.C_INPUT, true)
+	canvas.draw_rect(rect, Color(color, 0.75), false, 1.0)
+	AppChrome.draw_text(canvas, font, label, rect.position.x + 8, rect.position.y + 7, UiTheme.C_DIM, 12)
+	var display_value = value if unit == "" else "%s %s" % [value, unit]
+	AppChrome.draw_text(canvas, font, display_value, rect.position.x + 8, rect.position.y + 27, color, 12)
+
+
+static func _draw_waveform_panel(canvas: CanvasItem, font: Font, t: Callable, rect: Rect2, motor) -> void:
+	AppChrome.draw_panel(canvas, rect, UiTheme.C_PANEL, UiTheme.C_LINE)
+	AppChrome.draw_text(canvas, font, t.call("waveform"), rect.position.x + 18, rect.position.y + 18, UiTheme.C_DIM, 14)
+	var plot = Rect2(rect.position.x + 18, rect.position.y + 46, rect.size.x - 36, rect.size.y - 66)
+	canvas.draw_rect(plot, UiTheme.C_INPUT, true)
+	for i in range(1, 5):
+		var gy = plot.position.y + plot.size.y * i / 5.0
+		canvas.draw_line(Vector2(plot.position.x, gy), Vector2(plot.end.x, gy), Color(UiTheme.C_GRID, 0.55), 1.0)
+	for i in range(1, 7):
+		var gx = plot.position.x + plot.size.x * i / 7.0
+		canvas.draw_line(Vector2(gx, plot.position.y), Vector2(gx, plot.end.y), Color(UiTheme.C_GRID, 0.45), 1.0)
+	canvas.draw_rect(plot, UiTheme.C_LINE, false, 1.0)
+
+	var vals = motor.speed_history
+	var n = min(vals.size(), WAVEFORM_MAX_POINTS)
+	if n < 2:
+		AppChrome.draw_text(canvas, font, t.call("waiting_packets"), plot.position.x, plot.position.y + plot.size.y * 0.5 - 8, UiTheme.C_DIM, 15, HORIZONTAL_ALIGNMENT_CENTER, plot.size.x)
+		return
+	var start = vals.size() - n
+	var vmin = vals[start]
+	var vmax = vals[start]
+	for i in range(start, vals.size()):
+		vmin = min(vmin, vals[i])
+		vmax = max(vmax, vals[i])
+	var vrange = vmax - vmin
+	if absf(vrange) < 0.001:
+		vrange = 1.0
+	var points = PackedVector2Array()
+	for i in n:
+		var v: float = vals[start + i]
+		var px = plot.position.x + float(i) * plot.size.x / float(max(n - 1, 1))
+		var py = plot.position.y + plot.size.y - ((v - vmin) / vrange * plot.size.y)
+		points.append(Vector2(px, py))
+	canvas.draw_polyline(points, UiTheme.C_ACCENT, 2.0)
+
+
+static func _draw_command_matrix(canvas: CanvasItem, font: Font, t: Callable, rect: Rect2) -> void:
+	AppChrome.draw_panel(canvas, rect, UiTheme.C_PANEL, UiTheme.C_LINE)
+	AppChrome.draw_text(canvas, font, t.call("hotkeys"), rect.position.x + 14, rect.position.y + 16, UiTheme.C_DIM, 13)
+	AppChrome.draw_text(canvas, font, "X %s" % t.call("cmd_enable"), rect.position.x + 14, rect.position.y + 42, UiTheme.C_ACCENT, 13)
+	AppChrome.draw_text(canvas, font, "Y %s" % t.call("cmd_disable"), rect.position.x + 96, rect.position.y + 42, UiTheme.C_WARN, 13)
+	AppChrome.draw_text(canvas, font, "L1/R1 JOG", rect.position.x + 14, rect.position.y + 66, UiTheme.C_TEXT, 13)
+	AppChrome.draw_text(canvas, font, "L2 %s" % t.call("cmd_estop"), rect.position.x + 96, rect.position.y + 66, UiTheme.C_RED, 13)
+
+
+static func _draw_live_debug(canvas: CanvasItem, font: Font, t: Callable, rect: Rect2, raw_ok: bool, last_input_label: String) -> void:
+	AppChrome.draw_panel(canvas, rect, UiTheme.C_INPUT, UiTheme.C_LINE)
+	var input_state = "RAW /dev/input/js0" if raw_ok else "GODOT FALLBACK"
+	AppChrome.draw_text(canvas, font, t.call("input"), rect.position.x + 14, rect.position.y + 16, UiTheme.C_DIM, 13)
+	AppChrome.draw_text(canvas, font, input_state, rect.position.x + 76, rect.position.y + 16, UiTheme.C_ACCENT if raw_ok else UiTheme.C_WARN, 13)
+	AppChrome.draw_text(canvas, font, t.call("last"), rect.position.x + 270, rect.position.y + 16, UiTheme.C_DIM, 13)
+	AppChrome.draw_text(canvas, font, last_input_label, rect.position.x + 314, rect.position.y + 16, UiTheme.C_TEXT, 13)

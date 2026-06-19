@@ -1,9 +1,5 @@
 /*
  * json_protocol.c - JSON 协议解析与构建实现
- *
- * 使用轻量级字符串扫描来解析/构建 JSON。
- * 不需要外部 JSON 库，适合 Phase 0 快速验证。
- * Phase 1 可以替换为 cJSON 或 Zephyr JSON 库。
  */
 
 #include "json_protocol.h"
@@ -12,15 +8,10 @@
 #include <string.h>
 #include <stdlib.h>
 #include <ctype.h>
-#include <zephyr/sys/util.h>
-
-/* ---- 内部辅助: 字符串扫描 ---- */
 
 static const char *skip_ws(const char *p)
 {
-	while (*p && isspace((unsigned char)*p)) {
-		p++;
-	}
+	while (*p && isspace((unsigned char)*p)) p++;
 	return p;
 }
 
@@ -29,72 +20,33 @@ static const char *json_find_value(const char *s, const char *key)
 	char search[64];
 	int n = snprintf(search, sizeof(search), "\"%s\"", key);
 	const char *p = strstr(s, search);
-	if (!p) {
-		return NULL;
-	}
-
+	if (!p) return NULL;
 	p += n;
 	p = skip_ws(p);
-	if (*p != ':') {
-		return NULL;
-	}
+	if (*p != ':') return NULL;
 	p++;
 	return skip_ws(p);
 }
 
-/* 在 s 中查找 key 对应的字符串值，写入 val (最大 val_size 字节)。
- * 例: "cmd":"heartbeat" → val="heartbeat" */
 static bool json_get_string(const char *s, const char *key, char *val, int val_size)
 {
 	const char *p = json_find_value(s, key);
 	if (!p || *p != '"') return false;
 	p++;
 	int i;
-	for (i = 0; i < val_size - 1 && *p && *p != '"'; i++, p++) {
+	for (i = 0; i < val_size - 1 && *p && *p != '"'; i++, p++)
 		val[i] = *p;
-	}
 	val[i] = '\0';
 	return true;
 }
 
-/* 在 s 中查找 key 对应的整数值。
- * 支持: "key":123 或 "key":"123" */
 static bool json_get_int(const char *s, const char *key, int *val)
 {
 	const char *p = json_find_value(s, key);
 	if (!p) return false;
-
-	/* 跳过引号（处理 "key":"123" 的情况） */
 	if (*p == '"') p++;
-
 	*val = atoi(p);
 	return true;
-}
-
-/* 在 s 中查找 key 对应的浮点数值 */
-static bool json_get_float(const char *s, const char *key, float *val)
-{
-	const char *p = json_find_value(s, key);
-	if (!p) return false;
-	if (*p == '"') p++;
-	*val = (float)atof(p);
-	return true;
-}
-
-/* 在 s 中查找 key 对应的布尔值 */
-static bool json_get_bool(const char *s, const char *key, bool *val)
-{
-	const char *p = json_find_value(s, key);
-	if (!p) return false;
-	if (strncmp(p, "true", 4) == 0) {
-		*val = true;
-		return true;
-	}
-	if (strncmp(p, "false", 5) == 0) {
-		*val = false;
-		return true;
-	}
-	return false;
 }
 
 static int scale_float(float value, int scale)
@@ -111,21 +63,16 @@ static void format_fixed(char *buf, size_t buf_size, float value, int decimals)
 	const char *sign = scaled < 0 ? "-" : "";
 	int whole = abs_scaled / scale;
 	int frac = abs_scaled % scale;
-
-	if (decimals == 1) {
+	if (decimals == 1)
 		snprintf(buf, buf_size, "%s%d.%01d", sign, whole, frac);
-	} else {
+	else
 		snprintf(buf, buf_size, "%s%d.%02d", sign, whole, frac);
-	}
 }
 
-/* 内部: 获取 "payload":{"subkey":...} 中的整数值 */
 static bool json_get_payload_int(const char *s, const char *subkey, int *val)
 {
-	/* 先定位 "payload" */
 	const char *p = json_find_value(s, "payload");
 	if (!p) return false;
-	/* 在 payload 段内查找 subkey */
 	const char *q = json_find_value(p, subkey);
 	if (!q) return false;
 	if (*q == '"') q++;
@@ -133,7 +80,6 @@ static bool json_get_payload_int(const char *s, const char *subkey, int *val)
 	return true;
 }
 
-/* 内部: 获取 "payload":{"subkey":...} 中的字符串值 */
 static bool json_get_payload_string(const char *s, const char *subkey,
 				    char *val, int val_size)
 {
@@ -143,16 +89,12 @@ static bool json_get_payload_string(const char *s, const char *subkey,
 	if (!q || *q != '"') return false;
 	q++;
 	int i;
-	for (i = 0; i < val_size - 1 && *q && *q != '"'; i++, q++) {
+	for (i = 0; i < val_size - 1 && *q && *q != '"'; i++, q++)
 		val[i] = *q;
-	}
 	val[i] = '\0';
 	return true;
 }
 
-/* ---- 公共接口 ---- */
-
-/* 字符串到命令类型的映射 */
 static cmd_type_t str_to_cmd(const char *s)
 {
 	if (strcmp(s, "heartbeat") == 0)  return CMD_HEARTBEAT;
@@ -174,30 +116,25 @@ static cmd_type_t str_to_cmd(const char *s)
 
 bool cmd_json_parse(const char *json_str, int len, parsed_cmd_t *out)
 {
-	if (!json_str || !out) return false;
+	if (!json_str || len <= 0 || !out) return false;
 
 	memset(out, 0, sizeof(*out));
-	out->node = 1;       /* 默认节点 1 */
+	out->node = 0;
 	out->direction[0] = 'c';
 	out->direction[1] = 'w';
 	out->direction[2] = '\0';
-	out->speed = 500;    /* 默认 500 rpm */
+	out->speed = 50000;
 
-	/* 检查基本 JSON 结构 */
 	const char *brace = strchr(json_str, '{');
 	if (!brace) return false;
 
-	/* 提取 cmd */
 	char cmd_str[32];
-	if (!json_get_string(brace, "cmd", cmd_str, sizeof(cmd_str))) {
+	if (!json_get_string(brace, "cmd", cmd_str, sizeof(cmd_str)))
 		return false;
-	}
 	out->cmd = str_to_cmd(cmd_str);
 
-	/* 提取 seq */
 	json_get_int(brace, "seq", &out->seq);
 
-	/* 提取 payload 内部字段（按命令类型） */
 	switch (out->cmd) {
 	case CMD_HEARTBEAT:
 		json_get_payload_int(brace, "node", &out->node);
@@ -260,13 +197,12 @@ int json_build_ack(char *buf, int buf_size, int seq,
 int json_build_motor_status(char *buf, int buf_size,
 			    float current, float voltage,
 			    int speed, float position, float torque,
-			    int status_word, int fault, int mode,
+			    uint16_t drive_status_word, bool drive_fault,
+			    bool estop_latched, const char *display_status,
+			    uint32_t valid_mask, uint32_t fresh_mask, int mode,
 			    bool alive, int wdg_ms)
 {
-	char current_s[16];
-	char voltage_s[16];
-	char position_s[16];
-	char torque_s[16];
+	char current_s[16], voltage_s[16], position_s[16], torque_s[16];
 
 	format_fixed(current_s, sizeof(current_s), current, 2);
 	format_fixed(voltage_s, sizeof(voltage_s), voltage, 1);
@@ -278,11 +214,17 @@ int json_build_motor_status(char *buf, int buf_size,
 		"\"payload\":{"
 		"\"current\":%s,\"voltage\":%s,"
 		"\"speed\":%d,\"position\":%s,\"torque\":%s,"
-		"\"status_word\":%d,\"fault\":%d,\"mode\":%d,"
+		"\"status_word\":%u,\"fault\":%d,"
+		"\"drive_status_word\":%u,\"drive_fault\":%s,"
+		"\"estop_latched\":%s,\"display_status\":\"%s\","
+		"\"valid_mask\":%u,\"fresh_mask\":%u,\"mode\":%d,"
 		"\"alive\":%s,\"wdg_ms\":%d"
 		"}}",
 		current_s, voltage_s, speed, position_s, torque_s,
-		status_word, fault, mode,
+		drive_status_word, drive_fault ? 1 : 0,
+		drive_status_word, drive_fault ? "true" : "false",
+		estop_latched ? "true" : "false", display_status,
+		valid_mask, fresh_mask, mode,
 		alive ? "true" : "false", wdg_ms);
 }
 
