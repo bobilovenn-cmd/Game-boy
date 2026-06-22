@@ -1,16 +1,9 @@
 #!/bin/sh
-# Start the Godot terminal on RGB30 for manual testing.
-# This intentionally stops the current Python/SDL2 service first because that
-# runtime owns the DRM/KMS display path.
+# 在 RGB30 已有的 Sway/Wayland 会话中启动 Godot 终端。
 
 set -eu
 
 systemctl stop diag-terminal.service 2>/dev/null || true
-sleep 3
-
-# ROCKNIX can expose Wayland sockets before its first EGL context is usable.
-# A compositor restart is required for the Mali Wayland path used by Godot.
-systemctl restart sway.service
 
 export XDG_RUNTIME_DIR=/var/run/0-runtime-dir
 export WAYLAND_DISPLAY=wayland-1
@@ -23,6 +16,8 @@ export GODOT_SILENCE_ROOT_WARNING=1
 
 mkdir -p "$XDG_DATA_HOME" "$XDG_CACHE_HOME"
 
+# 手动从 ES Ports 启动时 Sway 已经运行。这里只等待图形会话就绪，
+# 禁止重启 Sway，避免 Godot 异常恢复时反复重置整个 ES 图形环境。
 sway_ready() {
   [ -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ] &&
     [ -S "$SWAYSOCK" ] &&
@@ -39,7 +34,7 @@ while ! sway_ready; do
   sleep 1
 done
 
-# The socket can become visible slightly before EGL initialization settles.
+# Wayland socket 可见后，Mali EGL 仍可能需要短暂稳定时间。
 sleep 2
 
 swaymsg output DSI-1 enable >/dev/null 2>&1 || true

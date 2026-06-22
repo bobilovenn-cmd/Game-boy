@@ -71,17 +71,30 @@ Run all headless tests:
 Then export the `RGB30 Linux ARM64` preset and verify launch and controls on the
 physical RGB30.
 
-For production boot persistence, copy the exported binary and all files from
+For production installation, copy the exported binary and all files from
 `deploy/` to `/storage/handheld_terminal_godot/`, then run:
 
 ```sh
 /storage/handheld_terminal_godot/install_rgb30_services.sh
 ```
 
-This enables `rgb30-input-bridge.service` and `rgb30-godot.timer`. The timer
-starts `rgb30-godot.service` 20 seconds after boot so the ROCKNIX graphics stack
-is initialized before Godot restarts Sway. The legacy Python terminal service
-remains disabled.
+The default installation keeps `rgb30-input-bridge.service` enabled at boot,
+but disables `rgb30-godot.timer`. RGB30 therefore boots into EmulationStation,
+and the diagnostic UI is opened manually from the existing
+`AGV_Diagnostic.sh` Ports entry. Godot uses the current Sway session and does
+not restart the compositor.
+
+If automatic UI startup is needed again:
+
+```sh
+/storage/handheld_terminal_godot/enable_rgb30_ui_autostart.sh
+```
+
+Return to manual Ports startup with:
+
+```sh
+/storage/handheld_terminal_godot/disable_rgb30_ui_autostart.sh
+```
 
 ## Known Protocol Limits
 

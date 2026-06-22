@@ -9,5 +9,5 @@ StartLimitBurst=5
 [Service]
 Type=simple
 ExecStart=/storage/handheld_terminal_godot/rgb30_start_godot.sh
-Restart=always
+Restart=on-failure
 RestartSec=2
