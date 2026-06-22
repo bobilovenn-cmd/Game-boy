@@ -29,6 +29,7 @@ const CanLogState = preload("res://scripts/models/can_log_state.gd")
 const ConnectionState = preload("res://scripts/models/connection_state.gd")
 const OtaState = preload("res://scripts/models/ota_state.gd")
 const StatusState = preload("res://scripts/models/status_state.gd")
+const ConfirmationState = preload("res://scripts/models/confirmation_state.gd")
 
 # Input
 const InputRouter = preload("res://scripts/input/input_router.gd")

@@ -21,10 +21,6 @@ const SCREEN_HEIGHT = 720
 const FPS = 30
 const WAVEFORM_HISTORY = 200
 
-# Use "rgb30_raw" for the verified /dev/input/js0 IDs.
-# Use "godot_standard" if Godot reports SDL-normalized joypad buttons.
-const INPUT_PROFILE = "rgb30_raw"
-
 const FIRMWARE_PATHS = [
 	"/storage/firmware.bin",
 	"/storage/update.bin",

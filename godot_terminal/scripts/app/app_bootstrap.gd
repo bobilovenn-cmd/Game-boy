@@ -35,6 +35,6 @@ static func start_raw_input(raw_input) -> Dictionary:
 		return {"ok": true}
 	return {
 		"ok": false,
-		"message": "Raw input thread failed; using Godot joypad fallback",
+		"message": "Event input bridge unavailable; using Godot joypad fallback",
 		"kind": "warn",
 	}

@@ -43,7 +43,14 @@ func _config_command(selected_index: int, node_id: int, config_items: Array) -> 
 	var object_index = int(item[1])
 	var sub_index = int(item[2])
 	if name_key == "cfg_save_eeprom":
-		return _send(Protocol.sdo_write(node_id, object_index, sub_index, 0x65766173), "Save EEPROM")
+		return {
+			"event": "confirm_required",
+			"message_key": "confirm_save_eeprom",
+			"confirmed_action": _send(
+				Protocol.sdo_write(node_id, object_index, sub_index, 0x65766173),
+				"Save EEPROM"
+			),
+		}
 	var result_msg = "Reading 0x%s..." % _hex(object_index)
 	return {
 		"event": "send",
@@ -70,10 +77,14 @@ func _ota_command(index: int, node_id: int) -> Dictionary:
 			}
 		4:
 			return {
-				"event": "send",
-				"message": Protocol.ota_flash(node_id),
-				"ui_message": "Flash command sent",
-				"ota_log": "Flash command sent",
+				"event": "confirm_required",
+				"message_key": "confirm_ota_flash",
+				"confirmed_action": {
+					"event": "send",
+					"message": Protocol.ota_flash(node_id),
+					"ui_message": "Flash command sent",
+					"ota_log": "Flash command sent",
+				},
 			}
 	return {}
 

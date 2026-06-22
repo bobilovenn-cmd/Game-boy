@@ -30,6 +30,7 @@ static func draw(canvas: CanvasItem, font: Font, t: Callable, ota, ota_items: Ar
 	AppChrome.draw_action_rail(canvas, font, t, UiConfig.OTA_ACTION_RAIL_RECT, _texts(t, ota_items.slice(OTA_RAIL_FIRST_INDEX, OTA_RAIL_END_INDEX)), ota_rail_selection)
 	AppChrome.draw_panel(canvas, UiConfig.OTA_TRANSFER_RECT, UiTheme.C_PANEL, UiTheme.C_LINE)
 	AppChrome.draw_text(canvas, font, t.call("transfer_state") % ota.state.to_upper(), 318, 306, UiTheme.C_TEXT, 11)
+	AppChrome.draw_text(canvas, font, t.call("ota_experimental"), 318, 338, UiTheme.C_WARN, 10)
 	_draw_progress_bar(canvas, font, UiConfig.OTA_PROGRESS_RECT, ota.progress, "%d%%  %.1f KB/s" % [ota.progress, ota.speed_kbps])
 	AppChrome.draw_text(canvas, font, t.call("target_dongle"), 318, 446, UiTheme.C_TEXT, 11)
 

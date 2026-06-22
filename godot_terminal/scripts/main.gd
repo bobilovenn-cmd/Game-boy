@@ -38,7 +38,8 @@ var can_log = Modules.CanLogState.new()             # CAN日志状态
 var connection = Modules.ConnectionState.new()      # UDP连接运行状态
 var ota = Modules.OtaState.new()                    # OTA升级状态
 var status = Modules.StatusState.new()              # 状态提示
-var raw_input = Modules.RawInputReader.new()        # /dev/input/js0读取器
+var confirmation = Modules.ConfirmationState.new()  # 危险操作确认
+var raw_input = Modules.RawInputReader.new()        # 本机 event 输入桥接收器
 var input_router = Modules.InputRouter.new()        # 统一输入事件路由
 
 var result_msg = ""                         # SDO读取结果
@@ -169,6 +170,18 @@ func _apply_input_result(result: Dictionary) -> void:
 
 
 func _handle_action(action: String) -> void:
+	if confirmation.is_active():
+		if action == "estop":
+			pass # Safety action always bypasses modal confirmation.
+		elif action == "confirm":
+			_apply_confirmed_action(confirmation.consume())
+			return
+		elif action == "back" or action == "language_select":
+			confirmation.cancel()
+			_set_status(_t("confirm_cancelled"), "warn")
+			return
+		else:
+			return
 	var result = interaction.resolve(
 		action,
 		app_session,
@@ -191,7 +204,7 @@ func _handle_action(action: String) -> void:
 func _apply_interaction_event(result: Dictionary) -> void:
 	match str(result.get("event", "")):
 		"shutdown":
-			OS.execute("poweroff", [])
+			_request_confirmation("confirm_shutdown", {"event": "shutdown_confirmed"})
 		"language_selected":
 			node_selector.reset()
 			_set_status("LANGUAGE %s" % app_session.ui_lang.to_upper())
@@ -278,6 +291,11 @@ func _apply_page_command(command: Dictionary) -> void:
 	if command.has("ota_log"):
 		_log_ota(str(command.get("ota_log", "")))
 	match str(command.get("event", "")):
+		"confirm_required":
+			_request_confirmation(
+				str(command.get("message_key", "")),
+				command.get("confirmed_action", {})
+			)
 		"send":
 			_send(
 				str(command.get("message", "")),
@@ -408,6 +426,7 @@ func _draw_filter_input_page() -> void:
 
 func _draw_status_overlay() -> void:
 	Modules.AppChrome.draw_status_overlay(self, font, status)
+	Modules.AppChrome.draw_confirmation(self, font, Callable(self, "_t"), confirmation)
 
 
 func _draw_footer() -> void:
@@ -439,3 +458,18 @@ func _set_status(message: String, kind: String = "info") -> void:
 
 func _log_ota(message: String) -> void:
 	ota.add_log(message)
+
+
+func _request_confirmation(message_key: String, action: Dictionary) -> void:
+	confirmation.arm(message_key, action, Time.get_ticks_msec())
+
+
+func _apply_confirmed_action(action: Dictionary) -> void:
+	match str(action.get("event", "")):
+		"shutdown_confirmed":
+			var output: Array = []
+			var code = OS.execute("poweroff", [], output, true, false)
+			if code != 0:
+				_set_status("Shutdown failed: %d" % code, "error")
+		"send":
+			_apply_page_command(action)

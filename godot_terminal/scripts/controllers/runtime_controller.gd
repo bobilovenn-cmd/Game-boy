@@ -24,6 +24,8 @@ func process_frame(
 		for raw in udp_client.poll_text_packets():
 			var data = Protocol.parse(raw)
 			_record_can_row(raw, data, can_log)
+			if not Protocol.is_valid_inbound(data):
+				continue
 			connection.mark_received(now)
 			events.append(message_dispatcher.handle(data, selected_node_id, motor, ota))
 

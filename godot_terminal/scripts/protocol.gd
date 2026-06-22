@@ -7,6 +7,13 @@ extends RefCounted
 class_name Protocol
 
 const CommandSchema = preload("res://scripts/protocol/command_schema.gd")
+const INBOUND_COMMANDS = {
+	"ack": true,
+	"can_log": true,
+	"motor_status": true,
+	"ota_status": true,
+	"sdo_read_result": true,
+}
 
 static var _seq_counter = 0
 
@@ -117,13 +124,24 @@ static func car_move(left_node: int, right_node: int, left_speed: int, right_spe
 
 
 static func parse(data: String) -> Dictionary:
-	var parsed = JSON.parse_string(data)
-	if typeof(parsed) == TYPE_DICTIONARY:
-		return parsed
+	var parser = JSON.new()
+	if parser.parse(data) == OK and typeof(parser.data) == TYPE_DICTIONARY:
+		return parser.data
 	return {
 		"cmd": "unknown",
 		"error": "json_parse_failed",
 	}
+
+
+static func is_valid_inbound(data: Dictionary) -> bool:
+	if data.has("error"):
+		return false
+	var cmd = str(data.get("cmd", ""))
+	if not INBOUND_COMMANDS.has(cmd):
+		return false
+	if data.has("payload") and typeof(data["payload"]) != TYPE_DICTIONARY:
+		return false
+	return true
 
 
 static func payload(data: Dictionary) -> Dictionary:
