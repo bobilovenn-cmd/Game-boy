@@ -8,6 +8,9 @@
 - 保留统一消息外层 `{cmd, seq, ts, payload}`。
 - ACK 必须回显请求 `seq`，重复请求应可去重。
 - 所有节点相关响应必须带实际 `node`，不能依靠 UI 当前选择值推断。
+- heartbeat 不携带节点时不得改变活动节点；E-STOP 必须使用协议明确的节点策略。
+- 速度命令当前统一使用原始 `pulse/s` 数值，例如 `50000`，不得在不同模块中
+  隐式乘除 100 或改写为 rpm。
 
 ## 事实遥测
 
@@ -29,6 +32,8 @@
 ## 命令可靠性
 
 - ACK 回显 `seq`、`node`、`status` 和稳定错误码。
+- `sdo_read` 的普通 ACK 只能表示请求已接收，最终结果必须由带相同 `seq` 的
+  `sdo_read_result` 返回。
 - 对 enable/disable/jog/SDO/OTA 定义明确超时和幂等行为。
 - heartbeat 不得修改活动节点。
 - E-STOP 必须采用明确节点策略，并保持最高安全优先级。

@@ -14,6 +14,9 @@
 > 当前 ESP32 固件保持兼容运行。未来重做固件时，以
 > `docs/ESP32_UI_CONTRACT.md` 为新增协议要求。旧 `motor_status` 没有逐字段
 > 新鲜度，因此 UI 不能独立证明六个字段在同一采集周期内全部更新。
+>
+> 本文请求示例统一使用当前默认节点 `2`。实际命令必须使用 UI 当前选中的节点，
+> 不能在实现中写死节点 1 或节点 2。
 
 ---
 
@@ -76,7 +79,7 @@
   "seq": 2,
   "ts": 1718000000,
   "payload": {
-	"node": 1
+	"node": 2
   }
 }
 ```
@@ -101,7 +104,7 @@
   "seq": 3,
   "ts": 1718000000,
   "payload": {
-	"node": 1
+	"node": 2
   }
 }
 ```
@@ -138,9 +141,9 @@
   "seq": 5,
   "ts": 1718000000,
   "payload": {
-	"node": 1,
+	"node": 2,
 	"direction": "cw",
-	"speed": 500
+	"speed": 50000
   }
 }
 ```
@@ -165,7 +168,7 @@
   "seq": 6,
   "ts": 1718000000,
   "payload": {
-	"node": 1
+	"node": 2
   }
 }
 ```
@@ -183,7 +186,7 @@
   "seq": 7,
   "ts": 1718000000,
   "payload": {
-	"node": 1,
+	"node": 2,
 	"index": 24672,
 	"sub": 0
   }
@@ -233,7 +236,7 @@
   "seq": 8,
   "ts": 1718000000,
   "payload": {
-	"node": 1,
+	"node": 2,
 	"index": 24672,
 	"sub": 0,
 	"data": 8
@@ -247,7 +250,7 @@
 | node | int | CANopen 节点 ID |
 | index | int | 对象字典索引 |
 | sub | int | 子索引 |
-| data | int | 写入值 (十六进制或十进制) |
+| data | int | JSON 整数；十六进制仅用于文档表达，线上发送对应十进制值 |
 
 **特殊写入**:
 - 保存 EEPROM: index=0x1010, sub=1, data=0x65766173 ("save" 的 ASCII)
@@ -337,7 +340,7 @@
   "seq": 12,
   "ts": 1718000000,
   "payload": {
-	"node": 1
+	"node": 2
   }
 }
 ```
@@ -349,6 +352,8 @@
 ### 电机状态 (motor_status)
 
 网关周期性上报电机实时状态。
+
+当前已回退并保持运行的旧固件使用兼容格式：
 
 ```json
 {
@@ -368,19 +373,68 @@
 }
 ```
 
+未来固件应提供以下扩展格式，使 UI 能验证节点、状态来源和字段新鲜度：
+
+```json
+{
+  "cmd": "motor_status",
+  "seq": 300,
+  "ts": 1718000001,
+  "payload": {
+	"node": 2,
+	"current": 1.25,
+	"voltage": 24.5,
+	"speed": 1500,
+	"position": 180.5,
+	"torque": 0.75,
+	"drive_status_word": 39,
+	"drive_fault": false,
+	"estop_latched": false,
+	"display_status": "ready",
+	"valid_mask": 63,
+	"fresh_mask": 63,
+	"fault": 0,
+	"mode": 8,
+	"alive": true,
+	"wdg_ms": 150
+  }
+}
+```
+
 **字段说明**:
 | 字段 | 类型 | 单位 | 说明 |
 |------|------|------|------|
+| node | int | - | 实际 CANopen 节点 ID |
 | current | float | A | 相电流 |
 | voltage | float | V | 母线电压 |
 | speed | int | pulse/s | 当前系统原始速度 |
 | position | float | deg | 位置角度 |
 | torque | float | Nm | 输出转矩 |
-| status_word | int | - | CiA 402 状态字 |
+| drive_status_word | int | - | 真实 CiA 402 状态字；旧固件字段名 `status_word` 仍兼容 |
+| drive_fault | bool | - | 驱动器真实 Fault 状态 |
+| estop_latched | bool | - | 软件紧急失能锁存，不能伪装成驱动器 Fault |
+| display_status | string | - | UI 展示状态，例如 `ready`、`offline`、`stale` |
+| valid_mask | int | bit mask | 六字段曾获得有效值的标志 |
+| fresh_mask | int | bit mask | 六字段当前新鲜度标志 |
 | fault | int | - | 故障码 (0=正常) |
 | mode | int | - | 运行模式 |
 | alive | bool | - | 驱动器在线状态 |
 | wdg_ms | int | ms | 看门狗剩余时间 |
+
+`valid_mask` / `fresh_mask` 位定义：
+
+| bit | 字段 |
+|-----|------|
+| 0 | speed |
+| 1 | position |
+| 2 | current |
+| 3 | voltage |
+| 4 | torque |
+| 5 | drive_status_word / status_word |
+
+旧固件未提供 `valid_mask`、`fresh_mask` 时，UI 为保持兼容会把收到的六字段视为
+有效；这不等于已证明六字段来自同一采集周期。未来固件必须遵循
+`docs/ESP32_UI_CONTRACT.md` 提供事实新鲜度。
 
 **CiA 402 状态字解析**:
 | 状态字 | 含义 |
@@ -422,7 +476,9 @@ OTA 升级过程中的状态上报。
 ```json
 {
   "cmd": "ack",
+  "seq": 2,
   "payload": {
+	"node": 2,
 	"status": "error",
 	"msg": "SDO timeout"
   }
@@ -447,11 +503,11 @@ OTA 升级过程中的状态上报。
 
 ### 电机控制流程
 ```
-终端 → 网关: enable {"node": 1}
+终端 → 网关: enable {"node": 2}
 网关 → 终端: ack {"status": "ok"}
-终端 → 网关: jog_start {"node": 1, "direction": "cw", "speed": 500}
+终端 → 网关: jog_start {"node": 2, "direction": "cw", "speed": 50000}
 网关 → 终端: ack {"status": "ok"}
-终端 → 网关: jog_stop {"node": 1}
+终端 → 网关: jog_stop {"node": 2}
 网关 → 终端: ack {"status": "ok"}
 ```
 
@@ -462,6 +518,6 @@ OTA 升级过程中的状态上报。
 终端 → 网关: ota_chunk {"offset": 512, "data": "base64..."}
 ...
 终端 → 网关: ota_verify
-终端 → 网关: ota_flash {"node": 1}
+终端 → 网关: ota_flash {"node": 2}
 网关 → 终端: ota_status {"state": "done"}
 ```

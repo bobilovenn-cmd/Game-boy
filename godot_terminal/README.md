@@ -9,7 +9,7 @@ This is the production RGB30 UI source:
 - JSON over UDP protocol to ESP32 CAN Dongle
 - 150 ms heartbeat
 - Stable Linux event-code input through `rgb30-input-bridge.service`
-- Motor status display and current waveform
+- Six-field motor telemetry and speed waveform
 
 The current ESP32 firmware remains compatible with this UI. Features requiring
 new firmware protocol support are documented in
@@ -53,6 +53,13 @@ The input bridge normalizes verified Linux event codes to these IDs:
 L2 remains the dedicated E-STOP input. Select must never be mapped to E-STOP.
 Godot/SDL input is only an emergency fallback when the event bridge is absent.
 
+Dangerous-action confirmation uses a dedicated `CanvasLayer` instead of
+switching pages. The current page remains visible and keeps its selection
+state; the decorative background grid is hidden while the opaque confirmation
+panel is open. Do not replace this with a full-screen translucent CanvasItem:
+the RGB30 Mali/Wayland GL compatibility path does not blend that overlay
+reliably.
+
 ## Verification
 
 Run all headless tests:
@@ -95,4 +102,5 @@ example:
 ```
 
 Device regression must verify launch, input bridge readiness, Select/L2
-separation, heartbeat, UDP receive, and safe handling of dangerous actions.
+separation, heartbeat, UDP receive, complete six-field telemetry, and safe
+handling of dangerous actions.
