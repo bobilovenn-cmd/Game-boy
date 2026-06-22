@@ -23,6 +23,8 @@ func resolve(
 ) -> Dictionary:
 	if not app_session.language_selected:
 		return _resolve_language(action, app_session, language_options)
+	if not app_session.mode_selected:
+		return {}
 	if not app_session.node_selected:
 		return _resolve_node(action, node_selector, node_key_rows, node_empty_error, node_range_error)
 	if upload_mode.open:

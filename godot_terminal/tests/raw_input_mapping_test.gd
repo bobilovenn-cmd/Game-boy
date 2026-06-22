@@ -19,6 +19,12 @@ func _init() -> void:
 	assert(InputMapper.raw_action(RawInputReader.normalized_button_id(310)) == "jog_ccw")
 	assert(InputMapper.raw_action(RawInputReader.normalized_button_id(311)) == "jog_cw")
 	assert(RawInputReader.normalized_button_id(999) == -1)
+	assert(RawInputReader.parse_bridge_message("axis:0:0.5").get("axis") == 0)
+	assert(is_equal_approx(
+		float(RawInputReader.parse_bridge_message("axis:1:-0.25").get("value")),
+		-0.25
+	))
+	assert(RawInputReader.parse_bridge_message("axis:9:bad").is_empty())
 
 	print("raw_input_mapping_test: PASS")
 	quit()

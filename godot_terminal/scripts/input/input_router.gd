@@ -22,6 +22,11 @@ func route_raw(raw: int, release_offset: int) -> Dictionary:
 	return {"action": action}
 
 
+func route_raw_axis(axis: int, value: float) -> Dictionary:
+	last_input_label = "raw axis %d -> %.3f" % [axis, value]
+	return {"axis": axis, "value": clamp(value, -1.0, 1.0)}
+
+
 func route_godot_button(button_index: int, pressed: bool) -> Dictionary:
 	var action = InputMapper.godot_button_action(button_index)
 	if action == "":
@@ -35,6 +40,9 @@ func route_godot_button(button_index: int, pressed: bool) -> Dictionary:
 
 
 func route_godot_axis(axis: int, value: float) -> Dictionary:
+	if axis == 0 or axis == 1:
+		last_input_label = "godot axis %d -> %.3f" % [axis, value]
+		return {"axis": axis, "value": clamp(value, -1.0, 1.0)}
 	var action = InputMapper.godot_axis_action(axis)
 	if action == "":
 		return {}

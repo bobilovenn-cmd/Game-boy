@@ -40,8 +40,8 @@ func stop() -> void:
 	udp.close()
 
 
-func drain_events() -> Array[int]:
-	var events: Array[int] = []
+func drain_events() -> Array:
+	var events: Array = []
 	while udp.get_available_packet_count() > 0:
 		var message = udp.get_packet().get_string_from_utf8().strip_edges()
 		last_bridge_msec = Time.get_ticks_msec()
@@ -49,8 +49,9 @@ func drain_events() -> Array[int]:
 		fallback_enabled = false
 		if message == "ready":
 			continue
-		if message.is_valid_int():
-			events.append(int(message))
+		var parsed = parse_bridge_message(message)
+		if not parsed.is_empty():
+			events.append(parsed)
 
 	if ok and Time.get_ticks_msec() - last_bridge_msec > BRIDGE_TIMEOUT_MSEC:
 		ok = false
@@ -60,3 +61,18 @@ func drain_events() -> Array[int]:
 
 static func normalized_button_id(event_code: int) -> int:
 	return int(EVENT_CODE_TO_BUTTON_ID.get(event_code, -1))
+
+
+static func parse_bridge_message(message: String) -> Dictionary:
+	if message.is_valid_int():
+		return {"type": "button", "value": int(message)}
+	var parts = message.split(":")
+	if parts.size() != 3 or parts[0] != "axis":
+		return {}
+	if not parts[1].is_valid_int() or not parts[2].is_valid_float():
+		return {}
+	return {
+		"type": "axis",
+		"axis": int(parts[1]),
+		"value": clamp(float(parts[2]), -1.0, 1.0),
+	}

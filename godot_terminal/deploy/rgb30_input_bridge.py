@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bridge stable Linux input event codes to the local Godot UI."""
+"""把稳定的 Linux 按键和摇杆事件转发给本机 Godot UI。"""
 
 import socket
 import select
@@ -10,6 +10,9 @@ DEVICE = "/dev/input/by-path/platform-rocknix-singleadc-joypad-event-joystick"
 DESTINATION = ("127.0.0.1", 5010)
 EVENT = struct.Struct("llHHI")
 EV_KEY = 1
+EV_ABS = 3
+ABS_RANGE = 1800.0
+AXIS_REFRESH_SECONDS = 0.05
 
 EVENT_CODE_TO_BUTTON_ID = {
     304: 0,   # BTN_SOUTH = physical B
@@ -28,6 +31,8 @@ EVENT_CODE_TO_BUTTON_ID = {
     547: 16,  # BTN_DPAD_RIGHT
 }
 
+SUPPORTED_AXES = {0, 1}  # 左摇杆 ABS_X / ABS_Y
+
 
 def send(sock: socket.socket, value: str) -> None:
     sock.sendto(value.encode("ascii"), DESTINATION)
@@ -37,6 +42,8 @@ def main() -> None:
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.settimeout(1.0)
     last_ready = 0.0
+    last_axis_refresh = 0.0
+    axes = {0: 0.0, 1: 0.0}
 
     with open(DEVICE, "rb", buffering=0) as device:
         while True:
@@ -45,21 +52,26 @@ def main() -> None:
                 send(sock, "ready")
                 last_ready = now
 
-            readable, _, _ = select.select([device], [], [], 0.25)
+            if now - last_axis_refresh >= AXIS_REFRESH_SECONDS:
+                for code, value in axes.items():
+                    send(sock, f"axis:{code}:{value:.4f}")
+                last_axis_refresh = now
+
+            readable, _, _ = select.select([device], [], [], 0.02)
             if not readable:
                 continue
             data = device.read(EVENT.size)
             if len(data) != EVENT.size:
                 continue
             _, _, event_type, code, value = EVENT.unpack(data)
-            if event_type != EV_KEY or code not in EVENT_CODE_TO_BUTTON_ID:
-                continue
-
-            button_id = EVENT_CODE_TO_BUTTON_ID[code]
-            if value == 1:
-                send(sock, str(button_id))
-            elif value == 0 and button_id in (4, 5):
-                send(sock, str(1000 + button_id))
+            if event_type == EV_KEY and code in EVENT_CODE_TO_BUTTON_ID:
+                button_id = EVENT_CODE_TO_BUTTON_ID[code]
+                if value == 1:
+                    send(sock, str(button_id))
+                elif value == 0 and button_id in (4, 5):
+                    send(sock, str(1000 + button_id))
+            elif event_type == EV_ABS and code in SUPPORTED_AXES:
+                axes[code] = max(-1.0, min(1.0, value / ABS_RANGE))
 
 
 if __name__ == "__main__":
