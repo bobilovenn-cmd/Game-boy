@@ -14,7 +14,6 @@ func handle(data: Dictionary, selected_node_id: int, motor, ota) -> Dictionary:
 			if not Protocol.matches_node(payload, selected_node_id):
 				return {"event": "ignored"}
 			motor.update_from_dict(payload)
-			motor.alive = true
 			return {"event": "motor_status"}
 		"sdo_read_result":
 			if not Protocol.matches_node(payload, selected_node_id):

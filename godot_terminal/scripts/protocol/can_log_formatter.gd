@@ -33,12 +33,14 @@ static func packet_summary(cmd: String, payload: Dictionary, raw: String) -> Str
 		return "%s  [%s]  %s" % [id_str, dlc_str, data_bytes]
 	match cmd:
 		"motor_status":
-			return "STATUS I=%sA V=%sV RPM=%s POS=%s T=%s" % [
-				str(payload.get("current", "--")),
-				str(payload.get("voltage", "--")),
-				str(payload.get("speed", "--")),
-				str(payload.get("position", "--")),
-				str(payload.get("torque", "--")),
+			var fresh_mask = int(payload.get("fresh_mask", 0x3F))
+			return "STATUS I=%s V=%s SPD=%s POS=%s T=%s STATE=%s" % [
+				_fresh_metric(payload, fresh_mask, 1 << 2, "current", "A"),
+				_fresh_metric(payload, fresh_mask, 1 << 3, "voltage", "V"),
+				_fresh_metric(payload, fresh_mask, 1 << 0, "speed", ""),
+				_fresh_metric(payload, fresh_mask, 1 << 1, "position", ""),
+				_fresh_metric(payload, fresh_mask, 1 << 4, "torque", ""),
+				str(payload.get("display_status", "")),
 			]
 		"ack":
 			return "ack %s %s" % [str(payload.get("status", "")), str(payload.get("msg", ""))]
@@ -49,6 +51,12 @@ static func packet_summary(cmd: String, payload: Dictionary, raw: String) -> Str
 	if raw.length() > 64:
 		return cmd + " " + raw.substr(0, 64)
 	return cmd + " " + raw
+
+
+static func _fresh_metric(payload: Dictionary, fresh_mask: int, field_bit: int, key: String, unit: String) -> String:
+	if (fresh_mask & field_bit) == 0:
+		return "--"
+	return "%s%s" % [str(payload.get(key, "--")), unit]
 
 
 static func _hex(value: int, width: int = 4) -> String:

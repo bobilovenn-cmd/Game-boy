@@ -21,7 +21,7 @@
   "seq": 123,
   "ts": 1718000000,
   "payload": {
-    // 命令特定参数
+	// 命令特定参数
   }
 }
 ```
@@ -33,8 +33,8 @@
   "seq": 123,
   "ts": 1718000001,
   "payload": {
-    "status": "ok",
-    "msg": "操作成功"
+	"status": "ok",
+	"msg": "操作成功"
   }
 }
 ```
@@ -71,7 +71,7 @@
   "seq": 2,
   "ts": 1718000000,
   "payload": {
-    "node": 1
+	"node": 1
   }
 }
 ```
@@ -96,7 +96,7 @@
   "seq": 3,
   "ts": 1718000000,
   "payload": {
-    "node": 1
+	"node": 1
   }
 }
 ```
@@ -133,9 +133,9 @@
   "seq": 5,
   "ts": 1718000000,
   "payload": {
-    "node": 1,
-    "direction": "cw",
-    "speed": 500
+	"node": 1,
+	"direction": "cw",
+	"speed": 500
   }
 }
 ```
@@ -160,7 +160,7 @@
   "seq": 6,
   "ts": 1718000000,
   "payload": {
-    "node": 1
+	"node": 1
   }
 }
 ```
@@ -178,9 +178,9 @@
   "seq": 7,
   "ts": 1718000000,
   "payload": {
-    "node": 1,
-    "index": 24672,
-    "sub": 0
+	"node": 1,
+	"index": 24672,
+	"sub": 0
   }
 }
 ```
@@ -209,8 +209,8 @@
 {
   "cmd": "sdo_read_result",
   "payload": {
-    "index": 24672,
-    "data": "0x08"
+	"index": 24672,
+	"data": "0x08"
   }
 }
 ```
@@ -228,10 +228,10 @@
   "seq": 8,
   "ts": 1718000000,
   "payload": {
-    "node": 1,
-    "index": 24672,
-    "sub": 0,
-    "data": 8
+	"node": 1,
+	"index": 24672,
+	"sub": 0,
+	"data": 8
   }
 }
 ```
@@ -260,8 +260,8 @@
   "seq": 9,
   "ts": 1718000000,
   "payload": {
-    "size": 64821760,
-    "md5": "d41d8cd98f00b204e9800998ecf8427e"
+	"size": 64821760,
+	"md5": "d41d8cd98f00b204e9800998ecf8427e"
   }
 }
 ```
@@ -285,8 +285,8 @@
   "seq": 10,
   "ts": 1718000000,
   "payload": {
-    "offset": 0,
-    "data": "SGVsbG8gV29ybGQ=..."
+	"offset": 0,
+	"data": "SGVsbG8gV29ybGQ=..."
   }
 }
 ```
@@ -329,7 +329,7 @@
   "seq": 12,
   "ts": 1718000000,
   "payload": {
-    "node": 1
+	"node": 1
   }
 }
 ```
@@ -346,16 +346,16 @@
 {
   "cmd": "motor_status",
   "payload": {
-    "current": 1.25,
-    "voltage": 24.5,
-    "speed": 1500,
-    "position": 180.5,
-    "torque": 0.75,
-    "status_word": 39,
-    "fault": 0,
-    "mode": 8,
-    "alive": true,
-    "wdg_ms": 150
+	"current": 1.25,
+	"voltage": 24.5,
+	"speed": 1500,
+	"position": 180.5,
+	"torque": 0.75,
+	"status_word": 39,
+	"fault": 0,
+	"mode": 8,
+	"alive": true,
+	"wdg_ms": 150
   }
 }
 ```
@@ -394,7 +394,7 @@ OTA 升级过程中的状态上报。
 {
   "cmd": "ota_status",
   "payload": {
-    "state": "done"
+	"state": "done"
   }
 }
 ```
@@ -415,8 +415,8 @@ OTA 升级过程中的状态上报。
 {
   "cmd": "ack",
   "payload": {
-    "status": "error",
-    "msg": "SDO timeout"
+	"status": "error",
+	"msg": "SDO timeout"
   }
 }
 ```

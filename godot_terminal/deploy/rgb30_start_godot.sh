@@ -23,9 +23,11 @@ swaymsg output DSI-1 power on >/dev/null 2>&1 || true
 echo 0 > /sys/class/graphics/fb0/blank 2>/dev/null || true
 
 cd /storage/handheld_terminal_godot
+
+systemctl start rgb30-input-bridge.service 2>/dev/null || true
+
 exec ./rgb30_diag_terminal_arm64 \
   --display-driver wayland \
   --rendering-method gl_compatibility \
   --fullscreen \
   --resolution 720x720
-

@@ -7,7 +7,7 @@ const RGB30_RAW_BUTTONS = {
 	3: "disable",
 	4: "jog_ccw",
 	5: "jog_cw",
-	6: "language_select",
+	6: "estop",
 	7: "stick_press",
 	8: "language_select",
 	9: "menu",
@@ -18,8 +18,10 @@ const RGB30_RAW_BUTTONS = {
 }
 
 const GODOT_STANDARD_BUTTONS = {
-	0: "back",
-	1: "confirm",
+	# Emergency fallback only. Normal RGB30 operation uses the stable event
+	# bridge, so reboot-dependent SDL numbering never controls A/B.
+	0: "confirm",
+	1: "back",
 	2: "enable",
 	3: "disable",
 	4: "language_select",

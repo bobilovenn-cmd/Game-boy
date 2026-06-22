@@ -2,11 +2,8 @@ extends RefCounted
 
 const UiTheme = preload("res://scripts/theme/ui_theme.gd")
 const AppChrome = preload("res://scripts/screens/app_chrome.gd")
+const UiConfig = preload("res://scripts/app/ui_config.gd")
 
-const HEADER_PANEL_RECT := Rect2(18, 140, 684, 108)
-const FILTER_INPUT_RECT := Rect2(112, 188, 474, 30)
-const ACTION_RAIL_RECT := Rect2(18, 268, 188, 226)
-const LOG_PANEL_RECT := Rect2(224, 268, 478, 372)
 const LOG_ROW_START_Y: float = 322.0
 const LOG_ROW_RECT_X: float = 240.0
 const LOG_ROW_WIDTH: float = 444.0
@@ -15,10 +12,10 @@ const LOG_ROW_STEP: float = 34.0
 
 
 static func draw(canvas: CanvasItem, font: Font, t: Callable, can_log, action_labels: Array, selected_index: int) -> void:
-	AppChrome.draw_panel(canvas, HEADER_PANEL_RECT, UiTheme.C_PANEL, UiTheme.C_LINE)
+	AppChrome.draw_panel(canvas, UiConfig.CAN_HEADER_RECT, UiTheme.C_PANEL, UiTheme.C_LINE)
 	AppChrome.draw_text(canvas, font, t.call("can_header"), 36, 158, UiTheme.C_ACCENT, 13)
 	AppChrome.draw_text(canvas, font, t.call("can_filter_label"), 36, 194, UiTheme.C_DIM, 13)
-	var input_rect = FILTER_INPUT_RECT
+	var input_rect = UiConfig.CAN_FILTER_RECT
 	canvas.draw_rect(input_rect, UiTheme.C_INPUT, true)
 	canvas.draw_rect(input_rect, UiTheme.C_LINE, false, 1.0)
 	var filter_text = can_log.filter if can_log.filter != "" else t.call("can_all")
@@ -31,8 +28,8 @@ static func draw(canvas: CanvasItem, font: Font, t: Callable, can_log, action_la
 	var last_line = can_log.last_line if can_log.last_line != "" else "WAIT UDP PACKETS"
 	AppChrome.draw_text(canvas, font, last_line, 36, 224, UiTheme.C_TEXT, 12, HORIZONTAL_ALIGNMENT_LEFT, 680)
 
-	AppChrome.draw_action_rail(canvas, font, t, ACTION_RAIL_RECT, action_labels, selected_index)
-	AppChrome.draw_panel(canvas, LOG_PANEL_RECT, UiTheme.C_PANEL, UiTheme.C_LINE)
+	AppChrome.draw_action_rail(canvas, font, t, UiConfig.CAN_ACTION_RAIL_RECT, action_labels, selected_index)
+	AppChrome.draw_panel(canvas, UiConfig.CAN_LOG_RECT, UiTheme.C_PANEL, UiTheme.C_LINE)
 	AppChrome.draw_text(canvas, font, t.call("can_log"), 242, 288, UiTheme.C_DIM, 14)
 	if rows.is_empty():
 		AppChrome.draw_text(canvas, font, t.call("can_empty"), 242, 332, UiTheme.C_TEXT, 15)

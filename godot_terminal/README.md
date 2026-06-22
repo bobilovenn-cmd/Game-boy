@@ -64,4 +64,3 @@ example:
 The first device test should only verify launch, fullscreen rendering, input,
 heartbeat, and UDP receive. Keep the Python/SDL2 service available until this
 port is proven stable.
-

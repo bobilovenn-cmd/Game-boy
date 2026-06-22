@@ -58,7 +58,7 @@ static func estop() -> String:
 	return _build("estop")
 
 
-static func jog_start(node: int, direction: String = "cw", speed: int = 500) -> String:
+static func jog_start(node: int, direction: String = "cw", speed: int = 50000) -> String:
 	return _build("jog_start", {
 		"node": node,
 		"direction": direction,

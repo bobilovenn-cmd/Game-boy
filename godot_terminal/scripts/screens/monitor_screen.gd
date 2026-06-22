@@ -2,12 +2,8 @@ extends RefCounted
 
 const UiTheme = preload("res://scripts/theme/ui_theme.gd")
 const AppChrome = preload("res://scripts/screens/app_chrome.gd")
+const UiConfig = preload("res://scripts/app/ui_config.gd")
 
-const COMMAND_RAIL_RECT := Rect2(18, 140, 188, 360)
-const TELEMETRY_GRID_RECT := Rect2(224, 140, 478, 190)
-const WAVEFORM_PANEL_RECT := Rect2(224, 346, 478, 196)
-const HOTKEY_PANEL_RECT := Rect2(18, 516, 188, 88)
-const INPUT_DEBUG_RECT := Rect2(224, 558, 478, 46)
 const TELEMETRY_CARD_SIZE := Vector2(138, 52)
 const TELEMETRY_COLUMN_STEP: float = 150.0
 const TELEMETRY_ROW_STEP: float = 62.0
@@ -15,23 +11,23 @@ const WAVEFORM_MAX_POINTS: int = 96
 
 
 static func draw(canvas: CanvasItem, font: Font, t: Callable, command_items: Array, selected_index: int, motor, raw_ok: bool, last_input_label: String) -> void:
-	AppChrome.draw_action_rail(canvas, font, t, COMMAND_RAIL_RECT, command_items, selected_index)
-	_draw_telemetry_grid(canvas, font, t, TELEMETRY_GRID_RECT, motor)
-	_draw_waveform_panel(canvas, font, t, WAVEFORM_PANEL_RECT, motor)
-	_draw_command_matrix(canvas, font, t, HOTKEY_PANEL_RECT)
-	_draw_live_debug(canvas, font, t, INPUT_DEBUG_RECT, raw_ok, last_input_label)
+	AppChrome.draw_action_rail(canvas, font, t, UiConfig.MONITOR_COMMAND_RAIL_RECT, command_items, selected_index)
+	_draw_telemetry_grid(canvas, font, t, UiConfig.MONITOR_TELEMETRY_RECT, motor)
+	_draw_waveform_panel(canvas, font, t, UiConfig.MONITOR_WAVEFORM_RECT, motor)
+	_draw_command_matrix(canvas, font, t, UiConfig.MONITOR_HOTKEY_RECT)
+	_draw_live_debug(canvas, font, t, UiConfig.MONITOR_INPUT_DEBUG_RECT, raw_ok, last_input_label)
 
 
 static func _draw_telemetry_grid(canvas: CanvasItem, font: Font, t: Callable, rect: Rect2, motor) -> void:
 	AppChrome.draw_panel(canvas, rect, UiTheme.C_PANEL, UiTheme.C_LINE)
 	AppChrome.draw_text(canvas, font, t.call("telemetry"), rect.position.x + 18, rect.position.y + 18, UiTheme.C_DIM, 14)
 	var cards = [
-		[t.call("metric_current"), "%.2f" % motor.current, "A", UiTheme.C_ACCENT],
-		[t.call("metric_voltage"), "%.1f" % motor.voltage, "V", UiTheme.C_ACCENT_2],
-		[t.call("metric_speed"), "%d" % motor.speed, "pulse/s", UiTheme.C_WARN],
-		[t.call("metric_position"), "%.1f" % motor.position, "deg", UiTheme.C_TEXT],
-		[t.call("metric_torque"), "%.2f" % motor.torque, "Nm", UiTheme.C_GREEN],
-		[t.call("metric_status"), motor.get_status_text(), "", UiTheme.C_RED if motor.is_fault() else UiTheme.C_GREEN],
+		_metric(motor, t.call("metric_current"), motor.FIELD_CURRENT, "%.2f" % motor.current, "A", UiTheme.C_ACCENT),
+		_metric(motor, t.call("metric_voltage"), motor.FIELD_VOLTAGE, "%.1f" % motor.voltage, "V", UiTheme.C_ACCENT_2),
+		_metric(motor, t.call("metric_speed"), motor.FIELD_SPEED, "%d" % motor.speed, "pulse/s", UiTheme.C_WARN),
+		_metric(motor, t.call("metric_position"), motor.FIELD_POSITION, "%.1f" % motor.position, "deg", UiTheme.C_TEXT),
+		_metric(motor, t.call("metric_torque"), motor.FIELD_TORQUE, "%.2f" % motor.torque, "Nm", UiTheme.C_GREEN),
+		_metric(motor, t.call("metric_status"), motor.FIELD_STATUS, motor.get_status_text(), "", UiTheme.C_RED if motor.is_alert() else UiTheme.C_GREEN),
 	]
 	var idx = 0
 	for row in 2:
@@ -43,11 +39,17 @@ static func _draw_telemetry_grid(canvas: CanvasItem, font: Font, t: Callable, re
 			idx += 1
 
 
+static func _metric(motor, label: String, field_bit: int, value: String, unit: String, color: Color) -> Array:
+	if not motor.is_field_fresh(field_bit):
+		return [label, "--", unit, UiTheme.C_DIM]
+	return [label, value, unit, color]
+
+
 static func _draw_metric_card(canvas: CanvasItem, font: Font, rect: Rect2, label: String, value: String, unit: String, color: Color) -> void:
 	canvas.draw_rect(rect, UiTheme.C_INPUT, true)
 	canvas.draw_rect(rect, Color(color, 0.75), false, 1.0)
 	AppChrome.draw_text(canvas, font, label, rect.position.x + 8, rect.position.y + 7, UiTheme.C_DIM, 12)
-	var display_value = value if unit == "" else "%s %s" % [value, unit]
+	var display_value = value if unit == "" or value == "--" else "%s %s" % [value, unit]
 	AppChrome.draw_text(canvas, font, display_value, rect.position.x + 8, rect.position.y + 27, color, 12)
 
 
@@ -98,7 +100,7 @@ static func _draw_command_matrix(canvas: CanvasItem, font: Font, t: Callable, re
 
 static func _draw_live_debug(canvas: CanvasItem, font: Font, t: Callable, rect: Rect2, raw_ok: bool, last_input_label: String) -> void:
 	AppChrome.draw_panel(canvas, rect, UiTheme.C_INPUT, UiTheme.C_LINE)
-	var input_state = "RAW /dev/input/js0" if raw_ok else "GODOT FALLBACK"
+	var input_state = "RAW EVENT BRIDGE" if raw_ok else "GODOT FALLBACK"
 	AppChrome.draw_text(canvas, font, t.call("input"), rect.position.x + 14, rect.position.y + 16, UiTheme.C_DIM, 13)
 	AppChrome.draw_text(canvas, font, input_state, rect.position.x + 76, rect.position.y + 16, UiTheme.C_ACCENT if raw_ok else UiTheme.C_WARN, 13)
 	AppChrome.draw_text(canvas, font, t.call("last"), rect.position.x + 270, rect.position.y + 16, UiTheme.C_DIM, 13)

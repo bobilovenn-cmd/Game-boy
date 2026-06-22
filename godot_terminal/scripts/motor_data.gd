@@ -8,6 +8,14 @@ class_name MotorData
 
 const AppSettings = preload("res://scripts/settings.gd")
 
+const FIELD_SPEED := 1 << 0
+const FIELD_POSITION := 1 << 1
+const FIELD_CURRENT := 1 << 2
+const FIELD_VOLTAGE := 1 << 3
+const FIELD_TORQUE := 1 << 4
+const FIELD_STATUS := 1 << 5
+const ALL_FIELDS := (1 << 6) - 1
+
 var current: float = 0.0
 var voltage: float = 0.0
 var speed: int = 0
@@ -15,6 +23,11 @@ var position: float = 0.0
 var torque: float = 0.0
 var status_word: int = 0
 var fault_code: int = 0
+var drive_fault: bool = false
+var estop_latched: bool = false
+var display_status: String = "offline"
+var valid_mask: int = 0
+var fresh_mask: int = 0
 var mode: int = 0
 var alive: bool = false
 var wdg_ms: int = 0
@@ -28,32 +41,41 @@ var _start_msec: int = Time.get_ticks_msec()
 
 
 func update_from_dict(data: Dictionary) -> void:
-	if data.has("current"):
+	valid_mask = int(data.get("valid_mask", ALL_FIELDS))
+	fresh_mask = int(data.get("fresh_mask", valid_mask))
+	if data.has("current") and is_field_fresh(FIELD_CURRENT):
 		current = float(data["current"])
-	if data.has("voltage"):
+	if data.has("voltage") and is_field_fresh(FIELD_VOLTAGE):
 		voltage = float(data["voltage"])
-	if data.has("speed"):
+	if data.has("speed") and is_field_fresh(FIELD_SPEED):
 		speed = int(data["speed"])
-	if data.has("position"):
+	if data.has("position") and is_field_fresh(FIELD_POSITION):
 		position = float(data["position"])
-	if data.has("torque"):
+	if data.has("torque") and is_field_fresh(FIELD_TORQUE):
 		torque = float(data["torque"])
 	if data.has("fault"):
 		fault_code = int(data["fault"])
+	drive_fault = bool(data.get("drive_fault", fault_code != 0))
+	estop_latched = bool(data.get("estop_latched", false))
+	display_status = str(data.get("display_status", ""))
 	if data.has("mode"):
 		mode = int(data["mode"])
 	if data.has("alive"):
 		alive = bool(data["alive"])
 	if data.has("wdg_ms"):
 		wdg_ms = int(data["wdg_ms"])
-	if data.has("status_word"):
-		status_word = _parse_status_word(data["status_word"])
+	if is_field_fresh(FIELD_STATUS):
+		if data.has("drive_status_word"):
+			status_word = _parse_status_word(data["drive_status_word"])
+		elif data.has("status_word"):
+			status_word = _parse_status_word(data["status_word"])
+	if display_status == "":
+		display_status = _resolve_legacy_display_status()
 
-	var elapsed_seconds: float = float(Time.get_ticks_msec() - _start_msec) / 1000.0
-	_push_history(timestamps, elapsed_seconds)
-	_push_history(current_history, current)
-	_push_history(speed_history, float(speed))
-	_push_history(torque_history, torque)
+	if is_field_fresh(FIELD_SPEED):
+		var elapsed_seconds: float = float(Time.get_ticks_msec() - _start_msec) / 1000.0
+		_push_history(timestamps, elapsed_seconds)
+		_push_history(speed_history, float(speed))
 
 
 func get_waveform_data(param: String) -> Array:
@@ -68,6 +90,14 @@ func get_waveform_data(param: String) -> Array:
 
 
 func get_status_text() -> String:
+	if estop_latched:
+		return "E-STOP"
+	if not alive or display_status == "offline":
+		return "OFFLINE"
+	if not is_field_fresh(FIELD_STATUS):
+		return "--"
+	if drive_fault:
+		return "FAULT"
 	var sw: int = status_word
 	if sw & 0x004F == 0x0000:
 		return "Not Ready"
@@ -85,7 +115,31 @@ func get_status_text() -> String:
 
 
 func is_fault() -> bool:
-	return (status_word & 0x0008) != 0 or fault_code != 0
+	return drive_fault
+
+
+func is_alert() -> bool:
+	return estop_latched or drive_fault
+
+
+func is_field_fresh(field_bit: int) -> bool:
+	return (fresh_mask & field_bit) != 0
+
+
+func is_field_valid(field_bit: int) -> bool:
+	return (valid_mask & field_bit) != 0
+
+
+func _resolve_legacy_display_status() -> String:
+	if estop_latched:
+		return "estop"
+	if not alive:
+		return "offline"
+	if not is_field_fresh(FIELD_STATUS):
+		return "stale"
+	if drive_fault:
+		return "drive_fault"
+	return "ready"
 
 
 func _push_history(target: Array[float], value: float) -> void:
