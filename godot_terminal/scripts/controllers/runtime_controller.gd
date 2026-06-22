@@ -15,6 +15,7 @@ func process_frame(
 	ota,
 	ota_transfer,
 	can_log,
+	command_tracker,
 	selected_node_id: int,
 	heartbeat_interval_msec: int
 ) -> Array[Dictionary]:
@@ -27,7 +28,9 @@ func process_frame(
 			if not Protocol.is_valid_inbound(data):
 				continue
 			connection.mark_received(now)
-			events.append(message_dispatcher.handle(data, selected_node_id, motor, ota))
+			events.append(message_dispatcher.handle(
+				data, selected_node_id, motor, ota, command_tracker
+			))
 
 	if connection.should_send_heartbeat(now, heartbeat_interval_msec):
 		events.append({
@@ -36,6 +39,12 @@ func process_frame(
 		})
 
 	connection.update_motor_alive(now, motor)
+	for expired in command_tracker.expire(now):
+		events.append({
+			"event": "command_timeout",
+			"cmd": str(expired.get("cmd", "")),
+			"seq": int(expired.get("seq", 0)),
+		})
 
 	for message in ota_transfer.process(ota, now):
 		events.append({

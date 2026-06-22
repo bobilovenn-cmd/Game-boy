@@ -1,0 +1,10 @@
+[Unit]
+Description=Delay RGB30 Godot startup until ROCKNIX boot completes
+
+[Timer]
+OnBootSec=20s
+AccuracySec=1s
+Unit=rgb30-godot.service
+
+[Install]
+WantedBy=timers.target

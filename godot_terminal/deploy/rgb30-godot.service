@@ -1,0 +1,13 @@
+[Unit]
+Description=RGB30 Godot motor diagnostic terminal
+After=local-fs.target sway.service rgb30-input-bridge.service
+Wants=sway.service rgb30-input-bridge.service
+Conflicts=diag-terminal.service
+StartLimitIntervalSec=30
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=/storage/handheld_terminal_godot/rgb30_start_godot.sh
+Restart=always
+RestartSec=2

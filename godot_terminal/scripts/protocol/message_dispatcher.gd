@@ -3,7 +3,7 @@ extends RefCounted
 const Protocol = preload("res://scripts/protocol.gd")
 
 
-func handle(data: Dictionary, selected_node_id: int, motor, ota) -> Dictionary:
+func handle(data: Dictionary, selected_node_id: int, motor, ota, command_tracker) -> Dictionary:
 	var cmd = str(data.get("cmd", ""))
 	var payload = Protocol.payload(data)
 	if payload != data:
@@ -18,6 +18,9 @@ func handle(data: Dictionary, selected_node_id: int, motor, ota) -> Dictionary:
 		"sdo_read_result":
 			if not Protocol.matches_node(payload, selected_node_id):
 				return {"event": "ignored"}
+			var sdo_correlation = command_tracker.resolve(data, cmd)
+			if str(sdo_correlation.get("status", "")) == "unknown_seq":
+				return {"event": "ignored_stale_response"}
 			var result_msg = _format_sdo_result(payload)
 			return {
 				"event": "sdo_result",
@@ -30,7 +33,13 @@ func handle(data: Dictionary, selected_node_id: int, motor, ota) -> Dictionary:
 			ota.apply_status(state)
 			return {"event": "ota_status"}
 		"ack":
-			if not Protocol.matches_node(payload, selected_node_id):
+			var correlation = command_tracker.resolve(data, cmd)
+			if str(correlation.get("status", "")) == "unknown_seq":
+				return {"event": "ignored_stale_response"}
+			if (
+				str(correlation.get("status", "")) == "legacy_unsequenced"
+				and not Protocol.matches_node(payload, selected_node_id)
+			):
 				return {"event": "ignored"}
 			var status = str(payload.get("status", ""))
 			var msg = str(payload.get("msg", ""))

@@ -64,6 +64,18 @@ Run all headless tests:
 Then export the `RGB30 Linux ARM64` preset and verify launch and controls on the
 physical RGB30.
 
+For production boot persistence, copy the exported binary and all files from
+`deploy/` to `/storage/handheld_terminal_godot/`, then run:
+
+```sh
+/storage/handheld_terminal_godot/install_rgb30_services.sh
+```
+
+This enables `rgb30-input-bridge.service` and `rgb30-godot.timer`. The timer
+starts `rgb30-godot.service` 20 seconds after boot so the ROCKNIX graphics stack
+is initialized before Godot restarts Sway. The legacy Python terminal service
+remains disabled.
+
 ## Known Protocol Limits
 
 - Legacy `motor_status` packets do not carry per-field timestamps. The UI can

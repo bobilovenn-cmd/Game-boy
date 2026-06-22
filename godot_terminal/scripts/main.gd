@@ -39,6 +39,8 @@ var connection = Modules.ConnectionState.new()      # UDP连接运行状态
 var ota = Modules.OtaState.new()                    # OTA升级状态
 var status = Modules.StatusState.new()              # 状态提示
 var confirmation = Modules.ConfirmationState.new()  # 危险操作确认
+var command_tracker = Modules.CommandTracker.new()  # UDP 请求/响应关联
+var event_executor = Modules.AppEventExecutor.new() # 平台与网络副作用执行器
 var raw_input = Modules.RawInputReader.new()        # 本机 event 输入桥接收器
 var input_router = Modules.InputRouter.new()        # 统一输入事件路由
 
@@ -87,6 +89,7 @@ func _process(_delta: float) -> void:
 		ota,
 		ota_transfer,
 		can_log,
+		command_tracker,
 		app_session.selected_node_id,
 		Modules.AppSettings.HEARTBEAT_INTERVAL_MS
 	):
@@ -262,6 +265,7 @@ func _confirm_node_input(value: int) -> void:
 	navigation.reset(TAB_KEYS.size())
 	motor = Modules.MotorData.new()
 	connection.reset_received()
+	command_tracker.clear()
 	result_msg = ""
 	node_selector.error_msg = ""
 	can_log.clear()
@@ -352,22 +356,32 @@ func _apply_runtime_event(event: Dictionary) -> void:
 		_set_status(str(event.get("status_message", "")), str(event.get("status_kind", "info")))
 	if event.has("ota_log"):
 		_log_ota(str(event.get("ota_log", "")))
-	if str(event.get("event", "")) == "send":
-		_send(str(event.get("message", "")))
+	match str(event.get("event", "")):
+		"send":
+			_send(str(event.get("message", "")))
+		"command_timeout":
+			_set_status(
+				_t("command_timeout") % [
+					str(event.get("cmd", "")),
+					int(event.get("seq", 0)),
+				],
+				"error"
+			)
 
 
 func _send(message: String, ui_msg: String = "", kind: String = "info") -> bool:
-	if not connection.udp_ready:
-		if ui_msg != "":
-			_set_status("UDP not ready", "error")
-		return false
-	var err = udp_client.send_text(message)
-	if err == OK:
+	var result = event_executor.send(
+		udp_client, connection, command_tracker, message, Time.get_ticks_msec()
+	)
+	if bool(result.get("ok", false)):
 		if ui_msg != "":
 			_set_status(ui_msg, kind)
 		return true
 	if ui_msg != "":
-		_set_status("Send failed: %d" % err, "error")
+		if str(result.get("error", "")) == "udp_not_ready":
+			_set_status("UDP not ready", "error")
+		else:
+			_set_status("Send failed: %d" % int(result.get("code", -1)), "error")
 	return false
 
 
@@ -467,9 +481,8 @@ func _request_confirmation(message_key: String, action: Dictionary) -> void:
 func _apply_confirmed_action(action: Dictionary) -> void:
 	match str(action.get("event", "")):
 		"shutdown_confirmed":
-			var output: Array = []
-			var code = OS.execute("poweroff", [], output, true, false)
-			if code != 0:
-				_set_status("Shutdown failed: %d" % code, "error")
+			var result = event_executor.shutdown()
+			if not bool(result.get("ok", false)):
+				_set_status("Shutdown failed: %d" % int(result.get("code", -1)), "error")
 		"send":
 			_apply_page_command(action)

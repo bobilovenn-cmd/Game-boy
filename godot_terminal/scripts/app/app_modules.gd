@@ -5,6 +5,7 @@ const AppSettings = preload("res://scripts/settings.gd")
 const UiText = preload("res://scripts/ui_text.gd")
 const UiConfig = preload("res://scripts/app/ui_config.gd")
 const AppBootstrap = preload("res://scripts/app/app_bootstrap.gd")
+const AppEventExecutor = preload("res://scripts/app/app_event_executor.gd")
 
 # Protocol services
 const UdpClient = preload("res://scripts/protocol/udp_client.gd")
@@ -30,6 +31,7 @@ const ConnectionState = preload("res://scripts/models/connection_state.gd")
 const OtaState = preload("res://scripts/models/ota_state.gd")
 const StatusState = preload("res://scripts/models/status_state.gd")
 const ConfirmationState = preload("res://scripts/models/confirmation_state.gd")
+const CommandTracker = preload("res://scripts/models/command_tracker.gd")
 
 # Input
 const InputRouter = preload("res://scripts/input/input_router.gd")
