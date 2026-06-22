@@ -13,7 +13,6 @@ const TAB_START_X: float = 18.0
 const TAB_GAP: float = 14.0
 const STATUS_OVERLAY_RECT := Rect2(110, 622, 500, 42)
 const FOOTER_RECT := Rect2(14, 670, 692, 36)
-const CONFIRM_RECT := Rect2(90, 250, 540, 190)
 const PANEL_CORNER_LENGTH: float = 18.0
 const ACTION_RAIL_SIDE_PADDING: float = 14.0
 const ACTION_RAIL_TOP_OFFSET: float = 48.0
@@ -23,8 +22,10 @@ const ACTION_ROW_MAX_HEIGHT: float = 38.0
 const ACTION_ROW_GAP: float = 8.0
 
 
-static func draw_background(canvas: CanvasItem) -> void:
+static func draw_background(canvas: CanvasItem, show_grid: bool = true) -> void:
 	canvas.draw_rect(Rect2(Vector2.ZERO, VIEWPORT_SIZE), UiTheme.C_BG, true)
+	if not show_grid:
+		return
 	for y in range(0, int(VIEWPORT_SIZE.y), BACKGROUND_GRID_STEP):
 		canvas.draw_line(Vector2(0, y), Vector2(VIEWPORT_SIZE.x, y), Color(UiTheme.C_GRID, 0.22), 1.0)
 	for x in range(0, int(VIEWPORT_SIZE.x), BACKGROUND_GRID_STEP):
@@ -72,19 +73,6 @@ static func draw_status_overlay(canvas: CanvasItem, font: Font, status) -> void:
 static func draw_footer(canvas: CanvasItem, font: Font, t: Callable) -> void:
 	draw_panel(canvas, FOOTER_RECT, UiTheme.C_PANEL, UiTheme.C_LINE)
 	draw_text(canvas, font, t.call("footer"), 24, 681, UiTheme.C_DIM, 12)
-
-
-static func draw_confirmation(canvas: CanvasItem, font: Font, t: Callable, confirmation) -> void:
-	if not confirmation.is_active():
-		return
-	canvas.draw_rect(Rect2(Vector2.ZERO, VIEWPORT_SIZE), Color(UiTheme.C_BG, 0.82), true)
-	draw_panel(canvas, CONFIRM_RECT, UiTheme.C_PANEL, UiTheme.C_WARN)
-	draw_text(canvas, font, t.call("confirm_title"), 110, 280, UiTheme.C_WARN, 22,
-		HORIZONTAL_ALIGNMENT_CENTER, 500)
-	draw_text(canvas, font, t.call(confirmation.message_key), 120, 332, UiTheme.C_TEXT, 16,
-		HORIZONTAL_ALIGNMENT_CENTER, 480)
-	draw_text(canvas, font, t.call("confirm_hint"), 120, 386, UiTheme.C_DIM, 14,
-		HORIZONTAL_ALIGNMENT_CENTER, 480)
 
 
 static func draw_action_rail(canvas: CanvasItem, font: Font, t: Callable, rect: Rect2, items: Array, selected_index: int) -> void:

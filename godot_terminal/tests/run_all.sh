@@ -7,6 +7,7 @@ ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 for test_file in \
 	can_log_state_test.gd \
 	command_tracker_test.gd \
+	confirmation_overlay_test.gd \
 	confirmation_state_test.gd \
 	dangerous_command_test.gd \
 	message_dispatcher_test.gd \

@@ -43,6 +43,7 @@ var command_tracker = Modules.CommandTracker.new()  # UDP 请求/响应关联
 var event_executor = Modules.AppEventExecutor.new() # 平台与网络副作用执行器
 var raw_input = Modules.RawInputReader.new()        # 本机 event 输入桥接收器
 var input_router = Modules.InputRouter.new()        # 统一输入事件路由
+var confirmation_overlay = Modules.ConfirmationOverlay.new()
 
 var result_msg = ""                         # SDO读取结果
 
@@ -53,6 +54,8 @@ func _ready() -> void:
 	navigation.reset(TAB_KEYS.size())
 
 	font = Modules.AppBootstrap.load_ui_font(self)
+	add_child(confirmation_overlay)
+	confirmation_overlay.configure(font)
 	var udp_result = Modules.AppBootstrap.configure_udp(udp_client)
 	connection.set_udp_ready(bool(udp_result.get("ok", false)))
 	_set_status(str(udp_result.get("message", "")), str(udp_result.get("kind", "info")))
@@ -73,6 +76,7 @@ func _process(_delta: float) -> void:
 	var now = Time.get_ticks_msec()
 	# 处理手柄输入队列
 	_drain_raw_input()
+	confirmation_overlay.sync(Callable(self, "_t"), confirmation)
 	# 语言未选择时只渲染语言选择界面
 	if not app_session.language_selected:
 		queue_redraw()
@@ -391,7 +395,7 @@ func _apply_firmware_result(result: Dictionary) -> void:
 
 
 func _draw_background() -> void:
-	Modules.AppChrome.draw_background(self)
+	Modules.AppChrome.draw_background(self, not confirmation.is_active())
 
 
 func _draw_language_select() -> void:
@@ -440,7 +444,6 @@ func _draw_filter_input_page() -> void:
 
 func _draw_status_overlay() -> void:
 	Modules.AppChrome.draw_status_overlay(self, font, status)
-	Modules.AppChrome.draw_confirmation(self, font, Callable(self, "_t"), confirmation)
 
 
 func _draw_footer() -> void:
