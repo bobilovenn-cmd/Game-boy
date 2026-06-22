@@ -21,18 +21,21 @@ func _init() -> void:
 
 	var connection = {"last_rx_msec": Time.get_ticks_msec()}
 	overlay.sync(func(key: String) -> String: return key, state, connection, true)
-	var fresh_values: String = overlay.labels["left_values"].text
-	assert(fresh_values.contains("12345 pulse/s"))
-	assert(fresh_values.contains("2.50 A"))
-	assert(fresh_values.contains("1.25 Nm"))
+	assert(overlay.labels["left_speed_value"].text == "12345 pulse/s")
+	assert(overlay.labels["left_current_value"].text == "2.50 A")
+	assert(overlay.labels["left_torque_value"].text == "1.25 Nm")
+	assert(overlay.labels["left_status"].text == "正常")
+	assert(overlay.labels["left_state_value"].text == "Enabled")
 
 	state.left_motor.fresh_mask = MotorData.FIELD_STATUS
 	overlay.sync(func(key: String) -> String: return key, state, connection, true)
-	var stale_values: String = overlay.labels["left_values"].text
-	assert(not stale_values.contains("12345 pulse/s"))
-	assert(not stale_values.contains("2.50 A"))
-	assert(not stale_values.contains("1.25 Nm"))
-	assert(stale_values.contains("--"))
+	assert(overlay.labels["left_speed_value"].text == "--")
+	assert(overlay.labels["left_current_value"].text == "--")
+	assert(overlay.labels["left_torque_value"].text == "--")
+
+	state.left_motor.alive = false
+	overlay.sync(func(key: String) -> String: return key, state, connection, true)
+	assert(overlay.labels["left_status"].text == "离线")
 
 	overlay.sync(func(key: String) -> String: return key, state, connection, false)
 	for layer in overlay.layers:

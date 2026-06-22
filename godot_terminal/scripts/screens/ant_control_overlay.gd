@@ -56,26 +56,40 @@ func _init() -> void:
 		HORIZONTAL_ALIGNMENT_CENTER)
 
 	_add_label("keys_title", Rect2(366, 470, 150, 18), 13, UiTheme.C_ACCENT)
-	_add_label("key_x", Rect2(366, 497, 105, 30), 11, UiTheme.C_TEXT,
+	_add_label("key_x_button", Rect2(374, 502, 28, 20), 13, UiTheme.C_TEXT,
 		HORIZONTAL_ALIGNMENT_CENTER)
-	_add_label("key_y", Rect2(478, 497, 105, 30), 11, UiTheme.C_TEXT,
+	_add_label("key_x_desc", Rect2(408, 496, 57, 34), 9, UiTheme.C_TEXT,
 		HORIZONTAL_ALIGNMENT_CENTER)
-	_add_label("key_l2", Rect2(590, 497, 114, 30), 11, UiTheme.C_RED,
+	_add_label("key_y_button", Rect2(486, 502, 28, 20), 13, UiTheme.C_TEXT,
+		HORIZONTAL_ALIGNMENT_CENTER)
+	_add_label("key_y_desc", Rect2(520, 496, 57, 34), 9, UiTheme.C_TEXT,
+		HORIZONTAL_ALIGNMENT_CENTER)
+	_add_label("key_l2_button", Rect2(598, 502, 32, 20), 12, UiTheme.C_RED,
+		HORIZONTAL_ALIGNMENT_CENTER)
+	_add_label("key_l2_desc", Rect2(636, 501, 62, 20), 10, UiTheme.C_RED,
 		HORIZONTAL_ALIGNMENT_CENTER)
 
 	_add_label("safety_title", Rect2(16, 555, 72, 20), 14, UiTheme.C_ACCENT)
-	_add_label("safety_disconnect", Rect2(137, 564, 150, 34), 11, UiTheme.C_TEXT)
-	_add_label("safety_timeout", Rect2(344, 564, 140, 34), 11, UiTheme.C_TEXT)
-	_add_label("safety_nodes", Rect2(540, 564, 154, 34), 11, UiTheme.C_TEXT)
+	_add_label("safety_disconnect", Rect2(137, 563, 150, 36), 12, UiTheme.C_TEXT)
+	_add_label("safety_timeout", Rect2(344, 563, 140, 36), 12, UiTheme.C_TEXT)
+	_add_label("safety_nodes", Rect2(540, 563, 154, 36), 12, UiTheme.C_TEXT)
 
 	_add_label("params_title", Rect2(16, 628, 72, 20), 14, UiTheme.C_ACCENT)
-	_add_label("param_speed", Rect2(132, 635, 106, 28), 10, UiTheme.C_TEXT)
-	_add_label("param_steering", Rect2(283, 635, 107, 28), 10, UiTheme.C_TEXT)
-	_add_label("param_deadzone", Rect2(435, 635, 107, 28), 10, UiTheme.C_TEXT)
-	_add_label("param_accel", Rect2(585, 635, 112, 28), 10, UiTheme.C_TEXT)
+	_add_label("param_speed", Rect2(132, 634, 106, 31), 11, UiTheme.C_TEXT)
+	_add_label("param_steering", Rect2(283, 634, 107, 31), 11, UiTheme.C_TEXT)
+	_add_label("param_deadzone", Rect2(435, 634, 107, 31), 11, UiTheme.C_TEXT)
+	_add_label("param_accel", Rect2(585, 634, 112, 31), 11, UiTheme.C_TEXT)
 
-	_add_label("footer", Rect2(16, 691, 688, 17), 10, UiTheme.C_DIM,
+	_add_label("footer_dpad", Rect2(42, 691, 120, 17), 10, UiTheme.C_DIM)
+	_add_label("footer_a_button", Rect2(190, 691, 16, 17), 10, UiTheme.C_ACCENT,
 		HORIZONTAL_ALIGNMENT_CENTER)
+	_add_label("footer_a", Rect2(214, 691, 126, 17), 10, UiTheme.C_DIM)
+	_add_label("footer_b_button", Rect2(370, 691, 16, 17), 10, UiTheme.C_RED,
+		HORIZONTAL_ALIGNMENT_CENTER)
+	_add_label("footer_b", Rect2(394, 691, 116, 17), 10, UiTheme.C_DIM)
+	_add_label("footer_select_button", Rect2(541, 693, 44, 13), 7, UiTheme.C_TEXT,
+		HORIZONTAL_ALIGNMENT_CENTER)
+	_add_label("footer_select", Rect2(592, 691, 105, 17), 10, UiTheme.C_DIM)
 
 
 func configure(font: Font) -> void:
@@ -135,9 +149,12 @@ func sync(t: Callable, state, connection, visible: bool) -> void:
 	labels["drive_enabled"].text = "驾驶\n◉"
 	labels["drive_fault"].text = "故障停车\n△"
 	labels["keys_title"].text = "物理按键控制"
-	labels["key_x"].text = "X  驾驶\n放下手刹"
-	labels["key_y"].text = "Y  停车\n拉起手刹"
-	labels["key_l2"].text = "L2  急停"
+	labels["key_x_button"].text = "X"
+	labels["key_x_desc"].text = "驾驶\n放下手刹"
+	labels["key_y_button"].text = "Y"
+	labels["key_y_desc"].text = "停车\n拉起手刹"
+	labels["key_l2_button"].text = "L2"
+	labels["key_l2_desc"].text = "急停"
 
 	labels["safety_title"].text = "安全策略"
 	labels["safety_disconnect"].text = "失联自动停车\n已启用"
@@ -153,16 +170,36 @@ func sync(t: Callable, state, connection, visible: bool) -> void:
 	labels["param_steering"].text = "转向灵敏度\n100%"
 	labels["param_deadzone"].text = "死区\n8%"
 	labels["param_accel"].text = "平滑加速\n未接入"
-	labels["footer"].text = "D-PAD 调整       A 设置       B 返回       SELECT 模式"
+	labels["footer_dpad"].text = "D-PAD 调整"
+	labels["footer_a_button"].text = "A"
+	labels["footer_a"].text = "A 设置"
+	labels["footer_b_button"].text = "B"
+	labels["footer_b"].text = "B 返回"
+	labels["footer_select_button"].text = "SELECT"
+	labels["footer_select"].text = "SELECT 模式"
 
 
 func _add_wheel_labels(prefix: String, x: float, y: float) -> void:
 	_add_label("%s_title" % prefix, Rect2(x, y, 214, 24), 17, UiTheme.C_ACCENT)
 	_add_label("%s_status" % prefix, Rect2(x + 267, y + 1, 62, 20), 10,
 		UiTheme.C_ACCENT, HORIZONTAL_ALIGNMENT_CENTER)
-	_add_label("%s_names" % prefix, Rect2(x + 49, y + 39, 82, 108), 10, UiTheme.C_TEXT)
-	_add_label("%s_values" % prefix, Rect2(x + 205, y + 39, 127, 108), 9,
-		UiTheme.C_TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
+	var row_names := ["target", "speed", "current", "torque", "state"]
+	var row_offsets := [34.0, 62.0, 89.0, 113.0, 137.0]
+	for index in row_names.size():
+		var row_y: float = y + row_offsets[index]
+		_add_label(
+			"%s_%s_name" % [prefix, row_names[index]],
+			Rect2(x + 49, row_y, 82, 18),
+			10,
+			UiTheme.C_TEXT
+		)
+		_add_label(
+			"%s_%s_value" % [prefix, row_names[index]],
+			Rect2(x + 235, row_y, 97, 18),
+			10,
+			UiTheme.C_TEXT,
+			HORIZONTAL_ALIGNMENT_RIGHT
+		)
 
 
 func _sync_wheel(prefix: String, target_speed: int, motor) -> void:
@@ -171,17 +208,33 @@ func _sync_wheel(prefix: String, target_speed: int, motor) -> void:
 		"左" if prefix == "left" else "右",
 		node,
 	]
-	labels["%s_status" % prefix].text = _motor_status(motor)
+	labels["%s_status" % prefix].text = _motor_health(motor)
 	labels["%s_status" % prefix].add_theme_color_override("font_color",
-		UiTheme.C_ACCENT if motor.alive else UiTheme.C_WARN)
-	labels["%s_names" % prefix].text = "本地目标\n\n实际速度\n\n电流\n\n转矩\n\n状态"
-	labels["%s_values" % prefix].text = "%d pulse/s\n\n%s\n\n%s\n\n%s\n\n%s" % [
-		target_speed,
-		_speed_text(motor),
-		_current_text(motor),
-		_torque_text(motor),
-		_motor_status(motor),
-	]
+		UiTheme.C_ACCENT if motor.alive and not motor.is_alert() else (
+			UiTheme.C_RED if motor.is_alert() else UiTheme.C_WARN
+		)
+	)
+	var row_names := {
+		"target": "本地目标",
+		"speed": "实际速度",
+		"current": "电流",
+		"torque": "转矩",
+		"state": "状态",
+	}
+	var row_values := {
+		"target": "%d pulse/s" % target_speed,
+		"speed": _speed_text(motor),
+		"current": _current_text(motor),
+		"torque": _torque_text(motor),
+		"state": _motor_status(motor),
+	}
+	for key in row_names:
+		labels["%s_%s_name" % [prefix, key]].text = row_names[key]
+		labels["%s_%s_value" % [prefix, key]].text = row_values[key]
+	labels["%s_state_value" % prefix].add_theme_color_override(
+		"font_color",
+		UiTheme.C_ACCENT if motor.alive and not motor.is_alert() else UiTheme.C_WARN
+	)
 
 
 func _speed_text(motor) -> String:
@@ -198,6 +251,14 @@ func _torque_text(motor) -> String:
 
 func _motor_status(motor) -> String:
 	return motor.get_status_text() if motor.alive else "离线"
+
+
+func _motor_health(motor) -> String:
+	if not motor.alive:
+		return "离线"
+	if motor.is_alert():
+		return "故障"
+	return "正常"
 
 
 func _node_summary(state) -> String:

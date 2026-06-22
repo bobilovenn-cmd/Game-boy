@@ -26,7 +26,7 @@ static func draw(canvas: CanvasItem, font: Font, t: Callable, state, connection)
 	_draw_keys_panel(canvas)
 	_draw_safety_panel(canvas, state)
 	_draw_params_panel(canvas)
-	_draw_panel(canvas, FOOTER_RECT, UiTheme.C_PANEL, UiTheme.C_LINE)
+	_draw_footer_panel(canvas)
 
 
 static func _draw_header(canvas: CanvasItem, state, connection) -> void:
@@ -92,24 +92,41 @@ static func _draw_wheel_panel(
 	motor
 ) -> void:
 	_draw_panel(canvas, rect, UiTheme.C_PANEL, UiTheme.C_ACCENT_2)
+	var health_color := UiTheme.C_ACCENT if motor.alive and not motor.is_alert() else (
+		UiTheme.C_RED if motor.is_alert() else UiTheme.C_WARN
+	)
+	var health_rect := Rect2(rect.end.x - 78, rect.position.y + 8, 62, 20)
+	canvas.draw_rect(health_rect, Color(health_color, 0.14), true)
+	canvas.draw_rect(health_rect, health_color, false, 1.0)
 	var data_rect := Rect2(rect.position + Vector2(8, 35), Vector2(rect.size.x - 16, 126))
 	_draw_panel(canvas, data_rect, UiTheme.C_INPUT, UiTheme.C_DIM_2, 5.0)
-	var ratios := [
+	var speed_ratios := [
 		clamp(abs(float(target_speed)) / 90000.0, 0.0, 1.0),
 		clamp(abs(float(motor.speed)) / 90000.0, 0.0, 1.0)
 			if motor.is_field_fresh(motor.FIELD_SPEED) else 0.0,
-		clamp(abs(motor.current) / 10.0, 0.0, 1.0)
-			if motor.is_field_fresh(motor.FIELD_CURRENT) else 0.0,
-		clamp(abs(motor.torque) / 10.0, 0.0, 1.0)
-			if motor.is_field_fresh(motor.FIELD_TORQUE) else 0.0,
 	]
-	for index in ratios.size():
-		var y := data_rect.position.y + 29.0 + index * 23.0
-		_draw_metric_icon(canvas, Vector2(data_rect.position.x + 18, y), index)
-		var bar := Rect2(data_rect.position.x + 44, y + 7, 164, 6)
+	var row_centers := [342.0, 370.0, 397.0, 421.0, 445.0]
+	for index in row_centers.size():
+		_draw_metric_icon(
+			canvas,
+			Vector2(data_rect.position.x + 18, row_centers[index]),
+			index
+		)
+	for index in speed_ratios.size():
+		var bar := Rect2(data_rect.position.x + 44, 351.0 + index * 28.0, 190, 6)
 		canvas.draw_rect(bar, Color(UiTheme.C_DIM_2, 0.28), true)
-		canvas.draw_rect(Rect2(bar.position, Vector2(bar.size.x * ratios[index], bar.size.y)),
+		canvas.draw_rect(Rect2(
+			bar.position,
+			Vector2(bar.size.x * speed_ratios[index], bar.size.y)
+		),
 			UiTheme.C_ACCENT, true)
+	for y in [406.0, 430.0]:
+		canvas.draw_line(
+			Vector2(data_rect.position.x + 44, y),
+			Vector2(data_rect.position.x + 248, y),
+			Color(UiTheme.C_DIM_2, 0.34),
+			1.0
+		)
 
 
 static func _draw_drive_panel(canvas: CanvasItem, state) -> void:
@@ -143,6 +160,13 @@ static func _draw_keys_panel(canvas: CanvasItem) -> void:
 		canvas.draw_rect(card["rect"], color, false, 1.0)
 		canvas.draw_rect(Rect2(card["rect"].position, Vector2(4, card["rect"].size.y)),
 			color, true)
+		var key_width := 34.0 if card["rect"].size.x > 110.0 else 30.0
+		var key_rect := Rect2(
+			card["rect"].position + Vector2(8, 7),
+			Vector2(key_width, 30)
+		)
+		canvas.draw_rect(key_rect, UiTheme.C_INPUT, true)
+		canvas.draw_rect(key_rect, color, false, 2.0)
 
 
 static func _draw_safety_panel(canvas: CanvasItem, state) -> void:
@@ -167,6 +191,23 @@ static func _draw_params_panel(canvas: CanvasItem) -> void:
 	_draw_steering(canvas, Vector2(265, 649), UiTheme.C_TEXT)
 	_draw_target(canvas, Vector2(417, 649), UiTheme.C_TEXT)
 	_draw_wave(canvas, Vector2(567, 649), UiTheme.C_TEXT)
+
+
+static func _draw_footer_panel(canvas: CanvasItem) -> void:
+	_draw_panel(canvas, FOOTER_RECT, UiTheme.C_PANEL, UiTheme.C_LINE)
+	for x in [170.0, 350.0, 520.0]:
+		canvas.draw_line(Vector2(x, 690), Vector2(x, 708), UiTheme.C_LINE, 1.0)
+	var dpad_center := Vector2(27, 699)
+	canvas.draw_rect(Rect2(dpad_center - Vector2(4, 11), Vector2(8, 22)),
+		UiTheme.C_DIM, false, 1.5)
+	canvas.draw_rect(Rect2(dpad_center - Vector2(11, 4), Vector2(22, 8)),
+		UiTheme.C_DIM, false, 1.5)
+	canvas.draw_circle(Vector2(198, 699), 8.0, UiTheme.C_INPUT)
+	canvas.draw_circle(Vector2(198, 699), 8.0, UiTheme.C_ACCENT, false, 1.5)
+	canvas.draw_circle(Vector2(378, 699), 8.0, UiTheme.C_INPUT)
+	canvas.draw_circle(Vector2(378, 699), 8.0, UiTheme.C_RED, false, 1.5)
+	canvas.draw_rect(Rect2(541, 693, 44, 13), UiTheme.C_INPUT, true)
+	canvas.draw_rect(Rect2(541, 693, 44, 13), UiTheme.C_DIM_2, false, 1.0)
 
 
 static func _draw_predicted_path(canvas: CanvasItem, center: Vector2, turn: float) -> void:
@@ -199,6 +240,8 @@ static func _draw_metric_icon(canvas: CanvasItem, center: Vector2, kind: int) ->
 		3:
 			canvas.draw_circle(center, 8.0, color, false, 1.2)
 			canvas.draw_arc(center, 4.0, 0, PI * 1.4, 10, color, 1.2)
+		4:
+			_draw_shield(canvas, center, UiTheme.C_ACCENT)
 
 
 static func _draw_axis_card(canvas: CanvasItem, rect: Rect2, color: Color) -> void:
