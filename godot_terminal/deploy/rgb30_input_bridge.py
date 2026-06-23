@@ -8,7 +8,9 @@ import time
 
 DEVICE = "/dev/input/by-path/platform-rocknix-singleadc-joypad-event-joystick"
 DESTINATION = ("127.0.0.1", 5010)
-EVENT = struct.Struct("llHHI")
+# Linux input_event 的 value 是有符号 32 位整数。摇杆负方向若按无符号解析，
+# 会变成巨大正数并在归一化后错误地固定为 +1.0。
+EVENT = struct.Struct("llHHi")
 EV_KEY = 1
 EV_ABS = 3
 ABS_RANGE = 1800.0
@@ -32,6 +34,11 @@ EVENT_CODE_TO_BUTTON_ID = {
 }
 
 SUPPORTED_AXES = {0, 1}  # 左摇杆 ABS_X / ABS_Y
+
+
+def normalize_axis_value(value: int) -> float:
+    """把设备原始轴值严格限制到 Godot 使用的 [-1.0, 1.0]。"""
+    return max(-1.0, min(1.0, value / ABS_RANGE))
 
 
 def send(sock: socket.socket, value: str) -> None:
@@ -71,7 +78,7 @@ def main() -> None:
                 elif value == 0 and button_id in (4, 5):
                     send(sock, str(1000 + button_id))
             elif event_type == EV_ABS and code in SUPPORTED_AXES:
-                axes[code] = max(-1.0, min(1.0, value / ABS_RANGE))
+                axes[code] = normalize_axis_value(value)
 
 
 if __name__ == "__main__":

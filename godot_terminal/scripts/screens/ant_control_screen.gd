@@ -95,17 +95,65 @@ static func _draw_wheel_panel(
 	var health_color := UiTheme.C_ACCENT if motor.alive and not motor.is_alert() else (
 		UiTheme.C_RED if motor.is_alert() else UiTheme.C_WARN
 	)
-	var health_rect := Rect2(rect.end.x - 78, rect.position.y + 8, 62, 20)
-	canvas.draw_rect(health_rect, Color(health_color, 0.14), true)
-	canvas.draw_rect(health_rect, health_color, false, 1.0)
-	var data_rect := Rect2(rect.position + Vector2(8, 35), Vector2(rect.size.x - 16, 126))
+	var data_rect := Rect2(rect.position + Vector2(8, 35), Vector2(270, 126))
 	_draw_panel(canvas, data_rect, UiTheme.C_INPUT, UiTheme.C_DIM_2, 5.0)
+	var status_rect := Rect2(rect.position + Vector2(285, 35), Vector2(57, 126))
+	_draw_panel(canvas, status_rect, UiTheme.C_INPUT, health_color, 5.0)
+	canvas.draw_line(
+		Vector2(status_rect.position.x + 8, status_rect.position.y + 34),
+		Vector2(status_rect.end.x - 8, status_rect.position.y + 34),
+		health_color,
+		1.0
+	)
+	canvas.draw_circle(
+		Vector2(status_rect.get_center().x, status_rect.position.y + 58),
+		15.0,
+		Color(health_color, 0.16)
+	)
+	canvas.draw_circle(
+		Vector2(status_rect.get_center().x, status_rect.position.y + 58),
+		15.0,
+		health_color,
+		false,
+		1.5
+	)
+	if motor.alive and not motor.is_alert():
+		_draw_shield(
+			canvas,
+			Vector2(status_rect.get_center().x, status_rect.position.y + 58),
+			health_color
+		)
+	elif motor.is_alert():
+		canvas.draw_line(
+			Vector2(status_rect.get_center().x, status_rect.position.y + 47),
+			Vector2(status_rect.get_center().x, status_rect.position.y + 62),
+			health_color,
+			2.0
+		)
+		canvas.draw_circle(
+			Vector2(status_rect.get_center().x, status_rect.position.y + 68),
+			1.8,
+			health_color
+		)
+	else:
+		canvas.draw_line(
+			Vector2(status_rect.position.x + 18, status_rect.position.y + 48),
+			Vector2(status_rect.end.x - 18, status_rect.position.y + 68),
+			health_color,
+			2.0
+		)
+		canvas.draw_line(
+			Vector2(status_rect.end.x - 18, status_rect.position.y + 48),
+			Vector2(status_rect.position.x + 18, status_rect.position.y + 68),
+			health_color,
+			2.0
+		)
 	var speed_ratios := [
 		clamp(abs(float(target_speed)) / 90000.0, 0.0, 1.0),
 		clamp(abs(float(motor.speed)) / 90000.0, 0.0, 1.0)
 			if motor.is_field_fresh(motor.FIELD_SPEED) else 0.0,
 	]
-	var row_centers := [342.0, 370.0, 397.0, 421.0, 445.0]
+	var row_centers := [342.0, 370.0, 397.0, 421.0]
 	for index in row_centers.size():
 		_draw_metric_icon(
 			canvas,
@@ -113,7 +161,7 @@ static func _draw_wheel_panel(
 			index
 		)
 	for index in speed_ratios.size():
-		var bar := Rect2(data_rect.position.x + 44, 351.0 + index * 28.0, 190, 6)
+		var bar := Rect2(data_rect.position.x + 44, 351.0 + index * 28.0, 174, 6)
 		canvas.draw_rect(bar, Color(UiTheme.C_DIM_2, 0.28), true)
 		canvas.draw_rect(Rect2(
 			bar.position,
@@ -123,7 +171,7 @@ static func _draw_wheel_panel(
 	for y in [406.0, 430.0]:
 		canvas.draw_line(
 			Vector2(data_rect.position.x + 44, y),
-			Vector2(data_rect.position.x + 248, y),
+			Vector2(data_rect.end.x - 10, y),
 			Color(UiTheme.C_DIM_2, 0.34),
 			1.0
 		)

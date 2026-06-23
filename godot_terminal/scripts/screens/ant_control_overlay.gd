@@ -2,6 +2,27 @@ extends Node
 
 const UiTheme = preload("res://scripts/theme/ui_theme.gd")
 const LINK_TIMEOUT_MSEC := 1500
+const BOLD_LABEL_KEYS := [
+	"title",
+	"breadcrumb",
+	"joystick_title",
+	"axis_x",
+	"axis_y",
+	"motion_title",
+	"motion_state",
+	"motion_values",
+	"left_title",
+	"left_status",
+	"right_title",
+	"right_status",
+	"drive_title",
+	"keys_title",
+	"key_x_button",
+	"key_y_button",
+	"key_l2_button",
+	"safety_title",
+	"params_title",
+]
 
 var labels: Dictionary = {}
 var layers: Array[CanvasLayer] = []
@@ -11,24 +32,31 @@ func _init() -> void:
 	# RGB30 实体渲染路径会遗漏同层的多个 Label，因此每个文字块独占 CanvasLayer。
 	_add_label("title", Rect2(16, 11, 112, 30), 21, UiTheme.C_TEXT)
 	_add_label("breadcrumb", Rect2(153, 17, 96, 20), 12, UiTheme.C_ACCENT)
-	_add_label("link", Rect2(268, 14, 56, 24), 8, UiTheme.C_ACCENT,
-		HORIZONTAL_ALIGNMENT_CENTER)
-	_add_label("can", Rect2(330, 14, 56, 24), 8, UiTheme.C_ACCENT,
-		HORIZONTAL_ALIGNMENT_CENTER)
-	_add_label("safe", Rect2(404, 14, 58, 24), 8, UiTheme.C_ACCENT,
-		HORIZONTAL_ALIGNMENT_CENTER)
-	_add_label("left_node", Rect2(478, 12, 108, 27), 8, UiTheme.C_TEXT,
-		HORIZONTAL_ALIGNMENT_CENTER)
-	_add_label("right_node", Rect2(596, 12, 108, 27), 8, UiTheme.C_TEXT,
-		HORIZONTAL_ALIGNMENT_CENTER)
+	_add_label("link", Rect2(268, 13, 56, 25), 12, UiTheme.C_ACCENT,
+		HORIZONTAL_ALIGNMENT_CENTER, VERTICAL_ALIGNMENT_CENTER)
+	_add_label("can", Rect2(330, 13, 56, 25), 12, UiTheme.C_ACCENT,
+		HORIZONTAL_ALIGNMENT_CENTER, VERTICAL_ALIGNMENT_CENTER)
+	_add_label("safe", Rect2(404, 13, 58, 25), 12, UiTheme.C_ACCENT,
+		HORIZONTAL_ALIGNMENT_CENTER, VERTICAL_ALIGNMENT_CENTER)
+	_add_label("left_node", Rect2(478, 11, 108, 29), 11, UiTheme.C_TEXT,
+		HORIZONTAL_ALIGNMENT_CENTER, VERTICAL_ALIGNMENT_CENTER)
+	_add_label("right_node", Rect2(596, 11, 108, 29), 11, UiTheme.C_TEXT,
+		HORIZONTAL_ALIGNMENT_CENTER, VERTICAL_ALIGNMENT_CENTER)
 
 	_add_label("joystick_title", Rect2(16, 61, 180, 24), 15, UiTheme.C_ACCENT)
-	_add_label("joystick_guides", Rect2(19, 91, 212, 178), 11, UiTheme.C_TEXT)
+	_add_label("joystick_forward", Rect2(90, 91, 74, 18), 11, UiTheme.C_TEXT,
+		HORIZONTAL_ALIGNMENT_CENTER)
+	_add_label("joystick_reverse", Rect2(90, 251, 74, 18), 11, UiTheme.C_TEXT,
+		HORIZONTAL_ALIGNMENT_CENTER)
+	_add_label("joystick_left", Rect2(20, 165, 40, 18), 11, UiTheme.C_TEXT,
+		HORIZONTAL_ALIGNMENT_CENTER)
+	_add_label("joystick_right", Rect2(194, 165, 40, 18), 11, UiTheme.C_TEXT,
+		HORIZONTAL_ALIGNMENT_CENTER)
 	_add_label("axis_x", Rect2(233, 118, 66, 44), 12, UiTheme.C_TEXT,
 		HORIZONTAL_ALIGNMENT_CENTER)
 	_add_label("axis_y", Rect2(233, 186, 66, 44), 12, UiTheme.C_TEXT,
 		HORIZONTAL_ALIGNMENT_CENTER)
-	_add_label("deadzone", Rect2(235, 245, 62, 18), 10, UiTheme.C_DIM,
+	_add_label("deadzone", Rect2(230, 245, 72, 18), 10, UiTheme.C_DIM,
 		HORIZONTAL_ALIGNMENT_CENTER)
 
 	_add_label("motion_title", Rect2(336, 61, 180, 24), 15, UiTheme.C_ACCENT)
@@ -56,16 +84,16 @@ func _init() -> void:
 		HORIZONTAL_ALIGNMENT_CENTER)
 
 	_add_label("keys_title", Rect2(366, 470, 150, 18), 13, UiTheme.C_ACCENT)
-	_add_label("key_x_button", Rect2(374, 502, 28, 20), 13, UiTheme.C_TEXT,
-		HORIZONTAL_ALIGNMENT_CENTER)
+	_add_label("key_x_button", Rect2(374, 496, 30, 30), 13, UiTheme.C_TEXT,
+		HORIZONTAL_ALIGNMENT_CENTER, VERTICAL_ALIGNMENT_CENTER)
 	_add_label("key_x_desc", Rect2(408, 496, 57, 34), 9, UiTheme.C_TEXT,
 		HORIZONTAL_ALIGNMENT_CENTER)
-	_add_label("key_y_button", Rect2(486, 502, 28, 20), 13, UiTheme.C_TEXT,
-		HORIZONTAL_ALIGNMENT_CENTER)
+	_add_label("key_y_button", Rect2(486, 496, 30, 30), 13, UiTheme.C_TEXT,
+		HORIZONTAL_ALIGNMENT_CENTER, VERTICAL_ALIGNMENT_CENTER)
 	_add_label("key_y_desc", Rect2(520, 496, 57, 34), 9, UiTheme.C_TEXT,
 		HORIZONTAL_ALIGNMENT_CENTER)
-	_add_label("key_l2_button", Rect2(598, 502, 32, 20), 12, UiTheme.C_RED,
-		HORIZONTAL_ALIGNMENT_CENTER)
+	_add_label("key_l2_button", Rect2(598, 496, 34, 30), 12, UiTheme.C_RED,
+		HORIZONTAL_ALIGNMENT_CENTER, VERTICAL_ALIGNMENT_CENTER)
 	_add_label("key_l2_desc", Rect2(636, 501, 62, 20), 10, UiTheme.C_RED,
 		HORIZONTAL_ALIGNMENT_CENTER)
 
@@ -97,6 +125,11 @@ func configure(font: Font) -> void:
 		return
 	for label in labels.values():
 		label.add_theme_font_override("font", font)
+	var bold_font := FontVariation.new()
+	bold_font.base_font = font
+	bold_font.variation_embolden = 0.75
+	for key in BOLD_LABEL_KEYS:
+		labels[key].add_theme_font_override("font", bold_font)
 
 
 func sync(t: Callable, state, connection, visible: bool) -> void:
@@ -107,13 +140,11 @@ func sync(t: Callable, state, connection, visible: bool) -> void:
 
 	labels["title"].text = t.call("ant_title")
 	labels["breadcrumb"].text = "模式  /  蚂蚁"
-	labels["link"].text = "LINK\n已连接"
-	labels["can"].text = "CAN\n%s" % (
-		"正常" if state.left_motor.alive or state.right_motor.alive else "离线"
-	)
-	labels["safe"].text = "安全\n%s" % ("急停" if state.estop_latched else "正常")
-	labels["left_node"].text = "左轮 Node 1\n固定节点"
-	labels["right_node"].text = "右轮 Node 2\n固定节点"
+	labels["link"].text = "LINK"
+	labels["can"].text = "CAN"
+	labels["safe"].text = "安全"
+	labels["left_node"].text = "左轮 Node 1"
+	labels["right_node"].text = "右轮 Node 2"
 	var link_alive: bool = connection.last_rx_msec > 0 and (
 		Time.get_ticks_msec() - connection.last_rx_msec <= LINK_TIMEOUT_MSEC
 	)
@@ -125,7 +156,10 @@ func sync(t: Callable, state, connection, visible: bool) -> void:
 		UiTheme.C_RED if state.estop_latched else UiTheme.C_ACCENT)
 
 	labels["joystick_title"].text = "摇杆输入"
-	labels["joystick_guides"].text = "                 前进\n\n\n左转                                      右转\n\n\n                 后退"
+	labels["joystick_forward"].text = "前进"
+	labels["joystick_reverse"].text = "后退"
+	labels["joystick_left"].text = "左转"
+	labels["joystick_right"].text = "右转"
 	labels["axis_x"].text = "X\n%+.2f" % state.joystick.x
 	labels["axis_y"].text = "Y\n%+.2f" % state.joystick.y
 	labels["deadzone"].text = "死区 8%"
@@ -146,7 +180,7 @@ func sync(t: Callable, state, connection, visible: bool) -> void:
 
 	labels["drive_title"].text = "驾驶状态"
 	labels["drive_brake"].text = "手刹\n(P)"
-	labels["drive_enabled"].text = "驾驶\n◉"
+	labels["drive_enabled"].text = "驾驶\n启用"
 	labels["drive_fault"].text = "故障停车\n△"
 	labels["keys_title"].text = "物理按键控制"
 	labels["key_x_button"].text = "X"
@@ -181,10 +215,14 @@ func sync(t: Callable, state, connection, visible: bool) -> void:
 
 func _add_wheel_labels(prefix: String, x: float, y: float) -> void:
 	_add_label("%s_title" % prefix, Rect2(x, y, 214, 24), 17, UiTheme.C_ACCENT)
-	_add_label("%s_status" % prefix, Rect2(x + 267, y + 1, 62, 20), 10,
+	_add_label("%s_status_title" % prefix, Rect2(x + 275, y + 40, 57, 18), 10,
+		UiTheme.C_DIM, HORIZONTAL_ALIGNMENT_CENTER)
+	_add_label("%s_status" % prefix, Rect2(x + 275, y + 105, 57, 18), 10,
 		UiTheme.C_ACCENT, HORIZONTAL_ALIGNMENT_CENTER)
-	var row_names := ["target", "speed", "current", "torque", "state"]
-	var row_offsets := [34.0, 62.0, 89.0, 113.0, 137.0]
+	_add_label("%s_drive_state" % prefix, Rect2(x + 275, y + 126, 57, 18), 9,
+		UiTheme.C_TEXT, HORIZONTAL_ALIGNMENT_CENTER)
+	var row_names := ["target", "speed", "current", "torque"]
+	var row_offsets := [34.0, 62.0, 89.0, 113.0]
 	for index in row_names.size():
 		var row_y: float = y + row_offsets[index]
 		_add_label(
@@ -195,10 +233,10 @@ func _add_wheel_labels(prefix: String, x: float, y: float) -> void:
 		)
 		_add_label(
 			"%s_%s_value" % [prefix, row_names[index]],
-			Rect2(x + 235, row_y, 97, 18),
+			Rect2(x + 132, row_y, 132, 18),
 			10,
 			UiTheme.C_TEXT,
-			HORIZONTAL_ALIGNMENT_RIGHT
+			HORIZONTAL_ALIGNMENT_LEFT
 		)
 
 
@@ -208,6 +246,7 @@ func _sync_wheel(prefix: String, target_speed: int, motor) -> void:
 		"左" if prefix == "left" else "右",
 		node,
 	]
+	labels["%s_status_title" % prefix].text = "状态"
 	labels["%s_status" % prefix].text = _motor_health(motor)
 	labels["%s_status" % prefix].add_theme_color_override("font_color",
 		UiTheme.C_ACCENT if motor.alive and not motor.is_alert() else (
@@ -215,23 +254,22 @@ func _sync_wheel(prefix: String, target_speed: int, motor) -> void:
 		)
 	)
 	var row_names := {
-		"target": "本地目标",
+		"target": "目标速度",
 		"speed": "实际速度",
 		"current": "电流",
 		"torque": "转矩",
-		"state": "状态",
 	}
 	var row_values := {
 		"target": "%d pulse/s" % target_speed,
 		"speed": _speed_text(motor),
 		"current": _current_text(motor),
 		"torque": _torque_text(motor),
-		"state": _motor_status(motor),
 	}
 	for key in row_names:
 		labels["%s_%s_name" % [prefix, key]].text = row_names[key]
 		labels["%s_%s_value" % [prefix, key]].text = row_values[key]
-	labels["%s_state_value" % prefix].add_theme_color_override(
+	labels["%s_drive_state" % prefix].text = _motor_status(motor)
+	labels["%s_drive_state" % prefix].add_theme_color_override(
 		"font_color",
 		UiTheme.C_ACCENT if motor.alive and not motor.is_alert() else UiTheme.C_WARN
 	)
@@ -274,7 +312,8 @@ func _add_label(
 	rect: Rect2,
 	font_size: int,
 	color: Color,
-	alignment: HorizontalAlignment = HORIZONTAL_ALIGNMENT_LEFT
+	alignment: HorizontalAlignment = HORIZONTAL_ALIGNMENT_LEFT,
+	vertical_alignment: VerticalAlignment = VERTICAL_ALIGNMENT_TOP
 ) -> void:
 	var canvas_layer := CanvasLayer.new()
 	canvas_layer.name = "%sLayer" % key
@@ -287,7 +326,7 @@ func _add_label(
 	label.position = rect.position
 	label.size = rect.size
 	label.horizontal_alignment = alignment
-	label.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+	label.vertical_alignment = vertical_alignment
 	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	label.add_theme_font_size_override("font_size", font_size)
