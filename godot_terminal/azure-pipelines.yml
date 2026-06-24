@@ -1,0 +1,39 @@
+name: rgb30-ui-$(Date:yyyyMMdd)$(Rev:.r)
+
+trigger:
+  branches:
+    include:
+      - "*"
+
+pr:
+  branches:
+    include:
+      - "*"
+
+parameters:
+  - name: agentPool
+    displayName: Azure 自托管 Mac Agent Pool
+    type: string
+    default: Default
+
+variables:
+  GODOT_BIN: /Applications/Godot.app/Contents/MacOS/Godot
+
+pool:
+  name: ${{ parameters.agentPool }}
+  demands:
+    - Agent.OS -equals Darwin
+
+steps:
+  - checkout: self
+    clean: true
+    fetchDepth: 1
+
+  - script: ./ci/run_rgb30_ui_ci.sh
+    displayName: 运行 RGB30 UI 测试并导出 ARM64
+    env:
+      GODOT_BIN: $(GODOT_BIN)
+
+  - publish: build
+    artifact: rgb30-ui-arm64
+    displayName: 保存 RGB30 ARM64 产物和 SHA256

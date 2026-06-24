@@ -69,7 +69,13 @@ Run all headless tests:
 ```
 
 Then export the `RGB30 Linux ARM64` preset and verify launch and controls on the
-physical RGB30.
+physical RGB30. The local command equivalent to Azure CI is:
+
+```sh
+./ci/run_rgb30_ui_ci.sh
+```
+
+Azure CI/CD setup is documented in `docs/AZURE_CI_CD.md`.
 
 For production installation, copy the exported binary and all files from
 `deploy/` to `/storage/handheld_terminal_godot/`, then run:
