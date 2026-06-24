@@ -10,17 +10,11 @@ pr:
     include:
       - "*"
 
-parameters:
-  - name: agentPool
-    displayName: Azure 自托管 Mac Agent Pool
-    type: string
-    default: Default
-
 variables:
   GODOT_BIN: /Applications/Godot.app/Contents/MacOS/Godot
 
 pool:
-  name: ${{ parameters.agentPool }}
+  name: Default
   demands:
     - Agent.OS -equals Darwin
 
