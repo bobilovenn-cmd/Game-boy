@@ -14,6 +14,7 @@ const TAB_GAP: float = 14.0
 const STATUS_OVERLAY_RECT := Rect2(110, 622, 500, 42)
 const FOOTER_RECT := Rect2(14, 670, 692, 36)
 const PANEL_CORNER_LENGTH: float = 18.0
+const PANEL_RADIUS: float = 8.0
 const ACTION_RAIL_SIDE_PADDING: float = 14.0
 const ACTION_RAIL_TOP_OFFSET: float = 48.0
 const ACTION_RAIL_TITLE_OFFSET: float = 18.0
@@ -50,8 +51,13 @@ static func draw_tabs(canvas: CanvasItem, font: Font, tab_keys: Array, current_t
 	for i in tab_keys.size():
 		var rect = Rect2(x, TAB_TOP, tab_w, TAB_HEIGHT)
 		var active = i == current_tab
-		canvas.draw_rect(rect, UiTheme.C_ACCENT if active else UiTheme.C_PANEL_2, true)
-		canvas.draw_rect(rect, UiTheme.C_ACCENT if active else UiTheme.C_LINE, false, 1.0)
+		draw_rounded_rect(
+			canvas,
+			rect,
+			UiTheme.C_ACCENT if active else UiTheme.C_PANEL_2,
+			UiTheme.C_ACCENT if active else UiTheme.C_LINE,
+			6.0
+		)
 		draw_text(canvas, font, tab_name.call(i), rect.position.x, rect.position.y + 10, UiTheme.C_TEXT, 12, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x)
 		x += tab_w + TAB_GAP
 
@@ -65,8 +71,7 @@ static func draw_status_overlay(canvas: CanvasItem, font: Font, status) -> void:
 	elif status.kind == "error":
 		color = UiTheme.C_RED
 	var rect = STATUS_OVERLAY_RECT
-	canvas.draw_rect(rect, Color(UiTheme.C_INPUT, 0.96), true)
-	canvas.draw_rect(rect, color, false, 2.0)
+	draw_rounded_rect(canvas, rect, Color(UiTheme.C_INPUT, 0.96), color, 7.0, 2)
 	draw_text(canvas, font, status.message, rect.position.x, rect.position.y + 13, color, 14, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x)
 
 
@@ -82,30 +87,48 @@ static func draw_action_rail(canvas: CanvasItem, font: Font, t: Callable, rect: 
 	var y = rect.position.y + ACTION_RAIL_TOP_OFFSET
 	for i in items.size():
 		var row_rect = Rect2(rect.position.x + ACTION_RAIL_SIDE_PADDING, y, rect.size.x - ACTION_RAIL_SIDE_PADDING * 2.0, row_h)
-		canvas.draw_rect(row_rect, UiTheme.C_INPUT, true)
-		canvas.draw_rect(row_rect, UiTheme.C_LINE, false, 1.0)
+		draw_rounded_rect(canvas, row_rect, UiTheme.C_INPUT, UiTheme.C_LINE, 5.0)
 		draw_text(canvas, font, items[i], row_rect.position.x, row_rect.position.y + max(7, int((row_h - 18) * 0.5)), UiTheme.C_TEXT, 14, HORIZONTAL_ALIGNMENT_CENTER, row_rect.size.x)
 		y += row_h + ACTION_ROW_GAP
 	if selected_index >= 0 and selected_index < items.size():
 		var selected_rect = Rect2(rect.position.x + ACTION_RAIL_SIDE_PADDING, rect.position.y + ACTION_RAIL_TOP_OFFSET + selected_index * (row_h + ACTION_ROW_GAP), rect.size.x - ACTION_RAIL_SIDE_PADDING * 2.0, row_h)
-		canvas.draw_rect(selected_rect, UiTheme.C_ACCENT, false, 2.0)
-		canvas.draw_rect(Rect2(selected_rect.position.x, selected_rect.position.y, 5, selected_rect.size.y), UiTheme.C_ACCENT, true)
+		draw_rounded_rect(
+			canvas, selected_rect, Color(UiTheme.C_INPUT, 0.0), UiTheme.C_ACCENT, 5.0, 2
+		)
+		draw_rounded_rect(
+			canvas,
+			Rect2(selected_rect.position.x, selected_rect.position.y, 5, selected_rect.size.y),
+			UiTheme.C_ACCENT,
+			UiTheme.C_ACCENT,
+			2.5
+		)
 
 
 static func _draw_status_chip(canvas: CanvasItem, font: Font, rect: Rect2, label: String, ok: bool) -> void:
 	var color = UiTheme.C_GREEN if ok else UiTheme.C_RED
-	canvas.draw_rect(rect, Color(color, 0.18), true)
-	canvas.draw_rect(rect, color, false, 1.0)
+	draw_rounded_rect(canvas, rect, Color(color, 0.18), color, 5.0)
 	draw_text(canvas, font, label, rect.position.x, rect.position.y + 7, color, 10, HORIZONTAL_ALIGNMENT_CENTER, rect.size.x)
 
 
 static func draw_panel(canvas: CanvasItem, rect: Rect2, fill: Color, border: Color) -> void:
-	canvas.draw_rect(rect, fill, true)
-	canvas.draw_rect(rect, border, false, 1.0)
-	canvas.draw_line(rect.position, rect.position + Vector2(PANEL_CORNER_LENGTH, 0), UiTheme.C_ACCENT, 2.0)
-	canvas.draw_line(rect.position, rect.position + Vector2(0, PANEL_CORNER_LENGTH), UiTheme.C_ACCENT, 2.0)
-	canvas.draw_line(Vector2(rect.end.x, rect.position.y), Vector2(rect.end.x - PANEL_CORNER_LENGTH, rect.position.y), UiTheme.C_ACCENT_2, 2.0)
-	canvas.draw_line(Vector2(rect.end.x, rect.position.y), Vector2(rect.end.x, rect.position.y + PANEL_CORNER_LENGTH), UiTheme.C_ACCENT_2, 2.0)
+	draw_rounded_rect(canvas, rect, fill, border, PANEL_RADIUS)
+
+
+static func draw_rounded_rect(
+	canvas: CanvasItem,
+	rect: Rect2,
+	fill: Color,
+	border: Color,
+	radius: float = 8.0,
+	border_width: int = 1
+) -> void:
+	var style := StyleBoxFlat.new()
+	style.bg_color = fill
+	style.border_color = border
+	style.set_border_width_all(border_width)
+	var corner_radius := int(minf(radius, minf(rect.size.x, rect.size.y) * 0.5))
+	style.set_corner_radius_all(corner_radius)
+	canvas.draw_style_box(style, rect)
 
 
 static func draw_text(canvas: CanvasItem, font: Font, text: String, x: float, y: float, color: Color, font_size: int = 16, align: HorizontalAlignment = HORIZONTAL_ALIGNMENT_LEFT, width: float = -1.0) -> void:

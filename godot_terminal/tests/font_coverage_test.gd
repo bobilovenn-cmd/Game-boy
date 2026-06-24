@@ -13,11 +13,7 @@ func _init() -> void:
 		for value in language.values():
 			texts_to_check.append(str(value))
 
-	# 蚂蚁页面含有根据实时状态组合的短文案，未全部放入 UiText。
-	# 字体覆盖测试必须同步检查这些页面源文件，避免 Mac 正常而 RGB30 缺字。
 	for source_path in [
-		"res://scripts/screens/ant_control_overlay.gd",
-		"res://scripts/screens/ant_control_screen.gd",
 		"res://scripts/screens/mode_select_screen.gd",
 	]:
 		texts_to_check.append(FileAccess.get_file_as_string(source_path))

@@ -23,7 +23,6 @@ const PageCommandController = preload("res://scripts/controllers/page_command_co
 const FirmwareController = preload("res://scripts/controllers/firmware_controller.gd")
 const InteractionController = preload("res://scripts/controllers/interaction_controller.gd")
 const RuntimeController = preload("res://scripts/controllers/runtime_controller.gd")
-const AntRuntimeController = preload("res://scripts/controllers/ant_runtime_controller.gd")
 
 # Models
 const MotorData = preload("res://scripts/motor_data.gd")
@@ -33,7 +32,6 @@ const OtaState = preload("res://scripts/models/ota_state.gd")
 const StatusState = preload("res://scripts/models/status_state.gd")
 const ConfirmationState = preload("res://scripts/models/confirmation_state.gd")
 const CommandTracker = preload("res://scripts/models/command_tracker.gd")
-const AntControlState = preload("res://scripts/models/ant_control_state.gd")
 
 # Input
 const InputRouter = preload("res://scripts/input/input_router.gd")
@@ -42,8 +40,7 @@ const RawInputReader = preload("res://scripts/input/raw_input_reader.gd")
 # Screens
 const LanguageScreen = preload("res://scripts/screens/language_screen.gd")
 const ModeSelectScreen = preload("res://scripts/screens/mode_select_screen.gd")
-const AntControlScreen = preload("res://scripts/screens/ant_control_screen.gd")
-const AntControlOverlay = preload("res://scripts/screens/ant_control_overlay.gd")
+const SelectionScreenOverlay = preload("res://scripts/screens/selection_screen_overlay.gd")
 const NodeSelectScreen = preload("res://scripts/screens/node_select_screen.gd")
 const UploadModeScreen = preload("res://scripts/screens/upload_mode_screen.gd")
 const AppChrome = preload("res://scripts/screens/app_chrome.gd")

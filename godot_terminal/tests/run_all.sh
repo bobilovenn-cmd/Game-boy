@@ -13,8 +13,6 @@ mkdir -p "$import_home"
 HOME="$import_home" "$GODOT_BIN" --headless --editor --path "$ROOT" --import --quit
 
 for test_file in \
-	ant_control_state_test.gd \
-	ant_control_overlay_test.gd \
 	can_log_state_test.gd \
 	command_tracker_test.gd \
 	confirmation_overlay_test.gd \
@@ -25,7 +23,9 @@ for test_file in \
 	mode_session_test.gd \
 	motor_data_test.gd \
 	protocol_validation_test.gd \
-	raw_input_mapping_test.gd
+	raw_input_mapping_test.gd \
+	selection_screen_layout_test.gd \
+	selection_screen_overlay_test.gd
 do
 	test_home="${TMPDIR:-/tmp}/gameboy-godot-${test_file%.gd}"
 	mkdir -p "$test_home"

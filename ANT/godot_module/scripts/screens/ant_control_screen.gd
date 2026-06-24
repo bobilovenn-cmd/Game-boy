@@ -50,8 +50,7 @@ static func _draw_joystick(canvas: CanvasItem, state) -> void:
 	var center := Vector2(127, 174)
 	var radius := 78.0
 	var field := Rect2(center - Vector2(radius, radius), Vector2(radius * 2.0, radius * 2.0))
-	canvas.draw_rect(field, UiTheme.C_INPUT, true)
-	canvas.draw_rect(field, UiTheme.C_DIM_2, false, 1.0)
+	_draw_panel(canvas, field, UiTheme.C_INPUT, UiTheme.C_DIM_2, 5.0)
 	canvas.draw_circle(center, radius - 5.0, Color(UiTheme.C_PANEL, 0.8))
 	canvas.draw_arc(center, radius - 5.0, 0, TAU, 64, UiTheme.C_DIM, 1.0)
 	canvas.draw_line(center - Vector2(radius - 5, 0), center + Vector2(radius - 5, 0),
@@ -71,12 +70,13 @@ static func _draw_joystick(canvas: CanvasItem, state) -> void:
 
 static func _draw_motion(canvas: CanvasItem, state) -> void:
 	_draw_panel(canvas, MOTION_RECT, UiTheme.C_PANEL, UiTheme.C_ACCENT_2)
-	canvas.draw_line(Vector2(434, 128), Vector2(434, 248), UiTheme.C_LINE, 1.0)
+	canvas.draw_line(Vector2(337, 187), Vector2(426, 187), UiTheme.C_LINE, 1.0)
 	var center := Vector2(574, 177)
 	var vehicle_rect := Rect2(center - Vector2(49, 64), Vector2(98, 128))
 	canvas.draw_circle(center, 61.0, Color(UiTheme.C_ACCENT_2, 0.035))
+	_draw_live_wheel_directions(canvas, center, state.joystick)
+	_draw_predicted_trajectory(canvas, center, state.joystick)
 	canvas.draw_texture_rect(AntVehicleTexture, vehicle_rect, false)
-	_draw_predicted_path(canvas, center, state.joystick.x)
 	canvas.draw_line(center + Vector2(0, -62), center + Vector2(0, -91),
 		UiTheme.C_ACCENT, 3.0)
 	canvas.draw_line(center + Vector2(0, -91), center + Vector2(-7, -79),
@@ -153,7 +153,7 @@ static func _draw_wheel_panel(
 		clamp(abs(float(motor.speed)) / 90000.0, 0.0, 1.0)
 			if motor.is_field_fresh(motor.FIELD_SPEED) else 0.0,
 	]
-	var row_centers := [342.0, 370.0, 397.0, 421.0]
+	var row_centers := [340.0, 372.0, 404.0, 434.0]
 	for index in row_centers.size():
 		_draw_metric_icon(
 			canvas,
@@ -161,14 +161,14 @@ static func _draw_wheel_panel(
 			index
 		)
 	for index in speed_ratios.size():
-		var bar := Rect2(data_rect.position.x + 44, 351.0 + index * 28.0, 174, 6)
+		var bar := Rect2(data_rect.position.x + 44, 349.0 + index * 32.0, 174, 6)
 		canvas.draw_rect(bar, Color(UiTheme.C_DIM_2, 0.28), true)
 		canvas.draw_rect(Rect2(
 			bar.position,
 			Vector2(bar.size.x * speed_ratios[index], bar.size.y)
 		),
 			UiTheme.C_ACCENT, true)
-	for y in [406.0, 430.0]:
+	for y in [415.0, 444.0]:
 		canvas.draw_line(
 			Vector2(data_rect.position.x + 44, y),
 			Vector2(data_rect.end.x - 10, y),
@@ -189,10 +189,16 @@ static func _draw_drive_panel(canvas: CanvasItem, state) -> void:
 	]
 	for card in cards:
 		var color: Color = card["color"]
-		canvas.draw_rect(card["rect"],
-			Color(color, 0.30) if card["active"] else UiTheme.C_INPUT, true)
-		canvas.draw_rect(card["rect"], color if card["active"] else UiTheme.C_LINE,
-			false, 1.0)
+		_draw_panel(
+			canvas,
+			card["rect"],
+			Color(color, 0.30) if card["active"] else UiTheme.C_INPUT,
+			color if card["active"] else UiTheme.C_LINE,
+			5.0
+		)
+	_draw_parking_brake_icon(canvas, Vector2(63, 521), UiTheme.C_TEXT)
+	_draw_steering(canvas, Vector2(174, 521), UiTheme.C_ACCENT)
+	_draw_warning_triangle(canvas, Vector2(288, 521), UiTheme.C_WARN)
 
 
 static func _draw_keys_panel(canvas: CanvasItem) -> void:
@@ -204,17 +210,13 @@ static func _draw_keys_panel(canvas: CanvasItem) -> void:
 	]
 	for card in cards:
 		var color: Color = card["color"]
-		canvas.draw_rect(card["rect"], Color(color, 0.08), true)
-		canvas.draw_rect(card["rect"], color, false, 1.0)
-		canvas.draw_rect(Rect2(card["rect"].position, Vector2(4, card["rect"].size.y)),
-			color, true)
+		_draw_panel(canvas, card["rect"], Color(color, 0.08), color, 5.0)
 		var key_width := 34.0 if card["rect"].size.x > 110.0 else 30.0
 		var key_rect := Rect2(
 			card["rect"].position + Vector2(8, 7),
 			Vector2(key_width, 30)
 		)
-		canvas.draw_rect(key_rect, UiTheme.C_INPUT, true)
-		canvas.draw_rect(key_rect, color, false, 2.0)
+		_draw_panel(canvas, key_rect, UiTheme.C_INPUT, color, 4.0)
 
 
 static func _draw_safety_panel(canvas: CanvasItem, state) -> void:
@@ -254,20 +256,7 @@ static func _draw_footer_panel(canvas: CanvasItem) -> void:
 	canvas.draw_circle(Vector2(198, 699), 8.0, UiTheme.C_ACCENT, false, 1.5)
 	canvas.draw_circle(Vector2(378, 699), 8.0, UiTheme.C_INPUT)
 	canvas.draw_circle(Vector2(378, 699), 8.0, UiTheme.C_RED, false, 1.5)
-	canvas.draw_rect(Rect2(541, 693, 44, 13), UiTheme.C_INPUT, true)
-	canvas.draw_rect(Rect2(541, 693, 44, 13), UiTheme.C_DIM_2, false, 1.0)
-
-
-static func _draw_predicted_path(canvas: CanvasItem, center: Vector2, turn: float) -> void:
-	if abs(turn) <= 0.05:
-		canvas.draw_dashed_line(center + Vector2(0, -60), center + Vector2(0, -112),
-			UiTheme.C_ACCENT_2, 6.0, 4.0)
-		return
-	var trajectory_center := center + Vector2(-turn * 115.0, -75)
-	for index in range(0, 24, 2):
-		var start: float = lerpf(PI * 0.10, PI * 0.90, float(index) / 24.0)
-		var end: float = lerpf(PI * 0.10, PI * 0.90, float(index + 1) / 24.0)
-		canvas.draw_arc(trajectory_center, 91.0, start, end, 4, UiTheme.C_ACCENT_2, 2.0)
+	_draw_panel(canvas, Rect2(541, 693, 44, 13), UiTheme.C_INPUT, UiTheme.C_DIM_2, 3.0)
 
 
 static func _draw_metric_icon(canvas: CanvasItem, center: Vector2, kind: int) -> void:
@@ -293,19 +282,129 @@ static func _draw_metric_icon(canvas: CanvasItem, center: Vector2, kind: int) ->
 
 
 static func _draw_axis_card(canvas: CanvasItem, rect: Rect2, color: Color) -> void:
-	canvas.draw_rect(rect, UiTheme.C_INPUT, true)
-	canvas.draw_rect(rect, color, false, 1.0)
+	_draw_panel(canvas, rect, UiTheme.C_INPUT, color, 5.0)
 
 
 static func _draw_chip(canvas: CanvasItem, rect: Rect2, ok: bool) -> void:
 	var color := UiTheme.C_ACCENT if ok else UiTheme.C_RED
-	canvas.draw_rect(rect, Color(color, 0.14), true)
-	canvas.draw_rect(rect, color, false, 1.0)
+	_draw_panel(canvas, rect, Color(color, 0.14), color, 5.0)
 
 
 static func _draw_node_badge(canvas: CanvasItem, rect: Rect2) -> void:
-	canvas.draw_rect(rect, UiTheme.C_INPUT, true)
-	canvas.draw_rect(rect, UiTheme.C_ACCENT_2, false, 1.0)
+	_draw_panel(canvas, rect, UiTheme.C_INPUT, UiTheme.C_ACCENT_2, 5.0)
+
+
+static func trajectory_points(joystick: Vector2, center: Vector2) -> PackedVector2Array:
+	var direction := 1.0 if joystick.y >= 0.0 else -1.0
+	var start := center + Vector2(0, -54.0 * direction)
+	var forward_distance := 34.0
+	var turn_offset := joystick.x * 70.0
+	if abs(joystick.y) <= 0.08:
+		forward_distance = 18.0
+		turn_offset = signf(joystick.x) * 56.0
+	var control := start + Vector2(turn_offset * 0.30, -forward_distance * 0.55 * direction)
+	var end := start + Vector2(turn_offset, -forward_distance * direction)
+	var points := PackedVector2Array()
+	for index in range(13):
+		var t := float(index) / 12.0
+		var inverse := 1.0 - t
+		points.append(
+			inverse * inverse * start
+			+ 2.0 * inverse * t * control
+			+ t * t * end
+		)
+	return points
+
+
+static func wheel_direction_segments(
+	joystick: Vector2,
+	center: Vector2
+) -> Array[Dictionary]:
+	var left_mix := clampf(joystick.y + joystick.x, -1.0, 1.0)
+	var right_mix := clampf(joystick.y - joystick.x, -1.0, 1.0)
+	var lateral_offset := joystick.x * 20.0
+	var segments: Array[Dictionary] = []
+	for wheel in [
+		{"origin": center + Vector2(-55, 0), "mix": left_mix},
+		{"origin": center + Vector2(55, 0), "mix": right_mix},
+	]:
+		var origin: Vector2 = wheel["origin"]
+		var mix: float = wheel["mix"]
+		segments.append({
+			"start": origin,
+			"end": origin + Vector2(lateral_offset, -mix * 48.0),
+			"mix": mix,
+		})
+	return segments
+
+
+static func _draw_live_wheel_directions(
+	canvas: CanvasItem,
+	center: Vector2,
+	joystick: Vector2
+) -> void:
+	for segment in wheel_direction_segments(joystick, center):
+		var mix: float = segment["mix"]
+		if absf(mix) <= 0.08:
+			continue
+		var start: Vector2 = segment["start"]
+		var end: Vector2 = segment["end"]
+		canvas.draw_dashed_line(start, end, UiTheme.C_ACCENT_2, 2.0, 5.0)
+		var direction := (end - start).normalized()
+		var normal := Vector2(-direction.y, direction.x)
+		canvas.draw_line(
+			end, end - direction * 8.0 + normal * 4.0, UiTheme.C_ACCENT_2, 2.0
+		)
+		canvas.draw_line(
+			end, end - direction * 8.0 - normal * 4.0, UiTheme.C_ACCENT_2, 2.0
+		)
+
+
+static func _draw_predicted_trajectory(
+	canvas: CanvasItem,
+	center: Vector2,
+	joystick: Vector2
+) -> void:
+	if joystick.length() <= 0.08:
+		return
+	var points := trajectory_points(joystick, center)
+	for index in range(points.size() - 1):
+		if index % 2 == 0:
+			canvas.draw_line(points[index], points[index + 1], UiTheme.C_ACCENT_2, 2.0)
+	var end := points[points.size() - 1]
+	var previous := points[points.size() - 2]
+	var direction := (end - previous).normalized()
+	var normal := Vector2(-direction.y, direction.x)
+	canvas.draw_line(end, end - direction * 10.0 + normal * 5.0, UiTheme.C_ACCENT_2, 2.0)
+	canvas.draw_line(end, end - direction * 10.0 - normal * 5.0, UiTheme.C_ACCENT_2, 2.0)
+
+
+static func _draw_parking_brake_icon(
+	canvas: CanvasItem,
+	center: Vector2,
+	color: Color
+) -> void:
+	canvas.draw_circle(center, 10.0, color, false, 1.5)
+	canvas.draw_line(center + Vector2(-3, -6), center + Vector2(-3, 6), color, 1.5)
+	canvas.draw_arc(center + Vector2(-1, -3), 4.0, -PI * 0.5, PI * 0.5, 10, color, 1.5)
+	canvas.draw_arc(center, 14.0, PI * 0.65, PI * 1.35, 10, color, 1.2)
+	canvas.draw_arc(center, 14.0, -PI * 0.35, PI * 0.35, 10, color, 1.2)
+
+
+static func _draw_warning_triangle(
+	canvas: CanvasItem,
+	center: Vector2,
+	color: Color
+) -> void:
+	var points := PackedVector2Array([
+		center + Vector2(0, -11),
+		center + Vector2(12, 10),
+		center + Vector2(-12, 10),
+		center + Vector2(0, -11),
+	])
+	canvas.draw_polyline(points, color, 1.7)
+	canvas.draw_line(center + Vector2(0, -4), center + Vector2(0, 4), color, 1.7)
+	canvas.draw_circle(center + Vector2(0, 7), 1.5, color)
 
 
 static func _draw_dashed_circle(

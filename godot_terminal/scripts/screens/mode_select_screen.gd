@@ -9,6 +9,9 @@ const OPTION_STEP := 112.0
 const OPTION_RECT_X := 108.0
 const OPTION_SIZE := Vector2(504, 88)
 const HINT_RECT := Rect2(78, 610, 564, 48)
+const OPTION_TITLE_FONT_SIZE: int = 24
+const OPTION_DESCRIPTION_FONT_SIZE: int = 13
+const HINT_FONT_SIZE: int = 15
 
 
 static func draw(
@@ -20,37 +23,38 @@ static func draw(
 ) -> void:
 	AppChrome.draw_panel(canvas, DIALOG_RECT, UiTheme.C_PANEL, UiTheme.C_LINE)
 	AppChrome.draw_text(canvas, font, t.call("mode_title"), 108, 92, UiTheme.C_TEXT, 24)
-	AppChrome.draw_text(canvas, font, t.call("mode_subtitle"), 108, 138, UiTheme.C_DIM, 14)
 	for i in mode_options.size():
 		var option: Dictionary = mode_options[i]
 		var rect = Rect2(Vector2(OPTION_RECT_X, OPTION_START_Y + i * OPTION_STEP), OPTION_SIZE)
-		canvas.draw_rect(rect, UiTheme.C_INPUT, true)
-		canvas.draw_rect(rect, UiTheme.C_LINE, false, 1.0)
+		AppChrome.draw_rounded_rect(canvas, rect, UiTheme.C_INPUT, UiTheme.C_LINE, 8.0)
 		AppChrome.draw_text(
 			canvas,
 			font,
-			"%s  ·  %s" % [
-				t.call(str(option.get("title_key", ""))),
-				t.call(str(option.get("desc_key", ""))),
-			],
-			rect.position.x + 18,
-			rect.position.y + 31,
+			t.call(str(option.get("title_key", ""))),
+			rect.position.x + 20,
+			rect.position.y + 13,
 			UiTheme.C_TEXT,
-			12
+			OPTION_TITLE_FONT_SIZE
+		)
+		var description_rect := Rect2(
+			rect.position + Vector2(16, 48),
+			Vector2(rect.size.x - 32, 28)
+		)
+		AppChrome.draw_rounded_rect(
+			canvas, description_rect, UiTheme.C_PANEL, UiTheme.C_PANEL, 5.0
 		)
 	var selected_rect = Rect2(
 		Vector2(OPTION_RECT_X, OPTION_START_Y + selected_index * OPTION_STEP),
 		OPTION_SIZE
 	)
-	canvas.draw_rect(selected_rect, UiTheme.C_ACCENT, false, 2.0)
-	canvas.draw_rect(
+	AppChrome.draw_rounded_rect(
+		canvas, selected_rect, Color(UiTheme.C_INPUT, 0.0), UiTheme.C_ACCENT, 8.0, 2
+	)
+	AppChrome.draw_rounded_rect(
+		canvas,
 		Rect2(selected_rect.position.x, selected_rect.position.y, 6, selected_rect.size.y),
 		UiTheme.C_ACCENT,
-		true
+		UiTheme.C_ACCENT,
+		3.0
 	)
 	AppChrome.draw_panel(canvas, HINT_RECT, UiTheme.C_INPUT, UiTheme.C_LINE)
-	AppChrome.draw_text(
-		canvas, font, t.call("mode_hint"), HINT_RECT.position.x,
-		HINT_RECT.position.y + 14, UiTheme.C_DIM, 14,
-		HORIZONTAL_ALIGNMENT_CENTER, HINT_RECT.size.x
-	)

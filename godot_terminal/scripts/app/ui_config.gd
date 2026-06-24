@@ -10,12 +10,6 @@ const MODE_OPTIONS = [
 		"desc_key": "mode_single_motor_desc",
 		"requires_node_selection": true,
 	},
-	{
-		"id": "ant_control",
-		"title_key": "mode_ant_control",
-		"desc_key": "mode_ant_control_desc",
-		"requires_node_selection": false,
-	},
 ]
 const TAB_KEYS = ["tab_monitor", "tab_config", "tab_ota", "tab_can"]
 const MONITOR_ITEM_KEYS = ["cmd_enable", "cmd_disable", "cmd_estop", "cmd_jog_cw", "cmd_jog_ccw", "cmd_position_mode", "cmd_speed_set"]

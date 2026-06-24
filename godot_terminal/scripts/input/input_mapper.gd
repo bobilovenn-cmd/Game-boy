@@ -78,4 +78,6 @@ static func keyboard_action(keycode: int) -> String:
 			return "jog_cw"
 		KEY_S:
 			return "estop"
+		KEY_BACKSPACE:
+			return "language_select"
 	return ""

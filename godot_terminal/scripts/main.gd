@@ -19,6 +19,9 @@ const NODE_KEY_ROWS = Modules.UiConfig.NODE_KEY_ROWS
 const KEYBOARD_ROWS = Modules.UiConfig.KEYBOARD_ROWS
 const NUMERIC_KEY_ROWS = Modules.UiConfig.NUMERIC_KEY_ROWS
 
+const RGB30_UI_REFRESH_MSEC := 200
+
+
 ## 应用模块实例
 var font: Font                              # 当前字体
 var udp_client = Modules.UdpClient.new()            # UDP通信对象
@@ -35,7 +38,7 @@ var page_commands = Modules.PageCommandController.new() # 页面命令控制器
 var firmware_controller = Modules.FirmwareController.new() # 固件加载控制器
 var interaction = Modules.InteractionController.new() # 模态与全局交互协调器
 var runtime = Modules.RuntimeController.new()         # 主循环运行调度器
-var ant_runtime = Modules.AntRuntimeController.new()  # 蚂蚁模式独立运行调度器
+var next_ui_refresh_msec := 0
 var can_log = Modules.CanLogState.new()             # CAN日志状态
 var connection = Modules.ConnectionState.new()      # UDP连接运行状态
 var ota = Modules.OtaState.new()                    # OTA升级状态
@@ -46,8 +49,7 @@ var event_executor = Modules.AppEventExecutor.new() # 平台与网络副作用�
 var raw_input = Modules.RawInputReader.new()        # 本机 event 输入桥接收器
 var input_router = Modules.InputRouter.new()        # 统一输入事件路由
 var confirmation_overlay = Modules.ConfirmationOverlay.new()
-var ant_control_overlay = Modules.AntControlOverlay.new()
-var ant_state = Modules.AntControlState.new(Modules.MotorData)
+var selection_screen_overlay = Modules.SelectionScreenOverlay.new()
 
 var result_msg = ""                         # SDO读取结果
 
@@ -58,10 +60,10 @@ func _ready() -> void:
 	navigation.reset(TAB_KEYS.size())
 
 	font = Modules.AppBootstrap.load_ui_font(self)
+	add_child(selection_screen_overlay)
+	selection_screen_overlay.configure(font)
 	add_child(confirmation_overlay)
 	confirmation_overlay.configure(font)
-	add_child(ant_control_overlay)
-	ant_control_overlay.configure(font)
 	var udp_result = Modules.AppBootstrap.configure_udp(udp_client)
 	connection.set_udp_ready(bool(udp_result.get("ok", false)))
 	_set_status(str(udp_result.get("message", "")), str(udp_result.get("kind", "info")))
@@ -80,32 +82,18 @@ func _exit_tree() -> void:
 ## 主循环 - 每帧执行
 func _process(_delta: float) -> void:
 	var now = Time.get_ticks_msec()
+	var refresh_ui: bool = now >= next_ui_refresh_msec
+	if refresh_ui:
+		next_ui_refresh_msec = now + RGB30_UI_REFRESH_MSEC
 	# 处理手柄输入队列
 	_drain_raw_input()
+	selection_screen_overlay.sync(Callable(self, "_t"), app_session)
 	confirmation_overlay.sync(Callable(self, "_t"), confirmation)
-	ant_control_overlay.sync(
-		Callable(self, "_t"),
-		ant_state,
-		connection,
-		app_session.current_mode == "ant_control"
-	)
 	# 语言未选择时只渲染语言选择界面
 	if not app_session.language_selected:
 		queue_redraw()
 		return
 	if not app_session.mode_selected:
-		queue_redraw()
-		return
-	if app_session.current_mode == "ant_control":
-		for event in ant_runtime.process_frame(
-			now,
-			udp_client,
-			connection,
-			ant_state,
-			command_tracker,
-			Modules.AppSettings.HEARTBEAT_INTERVAL_MS
-		):
-			_apply_runtime_event(event)
 		queue_redraw()
 		return
 	if not app_session.node_selected:
@@ -142,18 +130,12 @@ func _draw() -> void:
 	_draw_background()           # 绘制网格背景
 	if not app_session.language_selected:
 		_draw_language_select()  # 语言选择界面
-		_draw_status_overlay()
 		return
 	if not app_session.mode_selected:
 		_draw_mode_select()
-		_draw_status_overlay()
-		return
-	if app_session.current_mode == "ant_control":
-		_draw_ant_control()
 		return
 	if not app_session.node_selected:
 		_draw_node_select()      # 节点选择界面
-		_draw_status_overlay()
 		return
 	if upload_mode.open:
 		_draw_upload_mode_page() # 固件上传模式独立页面
@@ -214,12 +196,7 @@ func _handle_key(keycode: int) -> void:
 
 func _apply_input_result(result: Dictionary) -> void:
 	if result.has("axis"):
-		if app_session.current_mode == "ant_control":
-			ant_state.update_axis(
-				int(result.get("axis", -1)),
-				float(result.get("value", 0.0)),
-				Time.get_ticks_msec()
-			)
+		return
 	elif result.has("action"):
 		_handle_action(str(result.get("action", "")))
 	elif result.has("unmapped_button"):
@@ -241,9 +218,6 @@ func _handle_action(action: String) -> void:
 			return
 	if app_session.language_selected and not app_session.mode_selected:
 		_apply_interaction_event(app_session.handle_mode_action(action, MODE_OPTIONS))
-		return
-	if app_session.current_mode == "ant_control":
-		_handle_ant_action(action)
 		return
 	var result = interaction.resolve(
 		action,
@@ -312,27 +286,6 @@ func _enter_selected_mode(mode: String) -> void:
 	if mode == "single_motor":
 		node_selector.reset()
 		_set_status(_t("mode_single_motor"))
-	elif mode == "ant_control":
-		ant_state = Modules.AntControlState.new(Modules.MotorData)
-		_set_status(_t("ant_protocol_pending"), "warn")
-
-
-func _handle_ant_action(action: String) -> void:
-	match action:
-		"enable":
-			ant_state.clear_estop_for_preview()
-			ant_state.set_driving_enabled(true)
-			status.clear()
-		"disable":
-			ant_state.set_driving_enabled(false)
-			_set_status(_t("ant_brake_engaged"))
-		"estop":
-			ant_state.emergency_stop()
-			_send(motor_controller.estop(), _t("cmd_estop"), "error")
-		"back", "language_select":
-			_return_to_mode_select()
-		_:
-			return
 
 
 func _handle_navigation_action(action: String) -> void:
@@ -375,8 +328,6 @@ func _return_to_language_select() -> void:
 func _return_to_mode_select() -> void:
 	if app_session.current_mode == "single_motor":
 		_send(motor_controller.jog_stop())
-	elif app_session.current_mode == "ant_control":
-		ant_state.set_driving_enabled(false)
 	app_session.return_to_mode_select()
 	node_selector.reset()
 	command_tracker.clear()
@@ -473,8 +424,6 @@ func _apply_runtime_event(event: Dictionary) -> void:
 				],
 				"error"
 			)
-		"ant_joystick_timeout":
-			_set_status(_t("ant_joystick_timeout"), "error")
 
 
 func _send(message: String, ui_msg: String = "", kind: String = "info") -> bool:
@@ -514,10 +463,6 @@ func _draw_mode_select() -> void:
 		MODE_OPTIONS,
 		app_session.selected_mode_index
 	)
-
-
-func _draw_ant_control() -> void:
-	Modules.AntControlScreen.draw(self, font, Callable(self, "_t"), ant_state, connection)
 
 
 func _draw_node_select() -> void:
