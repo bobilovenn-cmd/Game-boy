@@ -29,11 +29,29 @@ steps:
     clean: true
     fetchDepth: 1
 
-  - script: ./ci/run_rgb30_ui_ci.sh
+  - script: |
+      set -eu
+      if [ -f project.godot ]; then
+        UI_ROOT="$PWD"
+      elif [ -f godot_terminal/project.godot ]; then
+        UI_ROOT="$PWD/godot_terminal"
+      else
+        echo "找不到 RGB30 Godot UI 根目录"
+        exit 1
+      fi
+
+      cd "$UI_ROOT"
+      ./ci/run_rgb30_ui_ci.sh
+
+      mkdir -p "$(Build.ArtifactStagingDirectory)/rgb30-ui-arm64"
+      cp build/rgb30_diag_terminal_arm64 \
+        "$(Build.ArtifactStagingDirectory)/rgb30-ui-arm64/"
+      cp build/rgb30_diag_terminal_arm64.sha256 \
+        "$(Build.ArtifactStagingDirectory)/rgb30-ui-arm64/"
     displayName: 运行 RGB30 UI 测试并导出 ARM64
     env:
       GODOT_BIN: $(GODOT_BIN)
 
-  - publish: build
+  - publish: $(Build.ArtifactStagingDirectory)/rgb30-ui-arm64
     artifact: rgb30-ui-arm64
     displayName: 保存 RGB30 ARM64 产物和 SHA256
