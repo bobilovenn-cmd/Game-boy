@@ -15,6 +15,7 @@ const TAB_KEYS = ["tab_monitor", "tab_config", "tab_ota", "tab_can"]
 const MONITOR_ITEM_KEYS = ["cmd_enable", "cmd_disable", "cmd_estop", "cmd_jog_cw", "cmd_jog_ccw", "cmd_position_mode", "cmd_speed_set"]
 
 const CONFIG_ITEMS = [
+	["cfg_change_node", 0x2001, 1, "cfg_node_transaction"],
 	["cfg_mode", 0x6060, 0, "cfg_drive_mode"],
 	["cfg_control_word", 0x6040, 0, "cfg_cia_402"],
 	["cfg_target_speed", 0x60FF, 0, "cfg_rpm"],

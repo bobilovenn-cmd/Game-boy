@@ -16,6 +16,7 @@ for test_file in \
 	can_log_state_test.gd \
 	command_tracker_test.gd \
 	confirmation_overlay_test.gd \
+	confirmation_dispatch_test.gd \
 	confirmation_state_test.gd \
 	dangerous_command_test.gd \
 	font_coverage_test.gd \
@@ -25,7 +26,8 @@ for test_file in \
 	protocol_validation_test.gd \
 	raw_input_mapping_test.gd \
 	selection_screen_layout_test.gd \
-	selection_screen_overlay_test.gd
+	selection_screen_overlay_test.gd \
+	upload_mode_overlay_test.gd
 do
 	test_home="${TMPDIR:-/tmp}/gameboy-godot-${test_file%.gd}"
 	mkdir -p "$test_home"

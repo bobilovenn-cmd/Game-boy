@@ -8,6 +8,7 @@ const AppBootstrap = preload("res://scripts/app/app_bootstrap.gd")
 const AppEventExecutor = preload("res://scripts/app/app_event_executor.gd")
 
 # Protocol services
+const Protocol = preload("res://scripts/protocol.gd")
 const UdpClient = preload("res://scripts/protocol/udp_client.gd")
 
 # Controllers
@@ -32,6 +33,7 @@ const OtaState = preload("res://scripts/models/ota_state.gd")
 const StatusState = preload("res://scripts/models/status_state.gd")
 const ConfirmationState = preload("res://scripts/models/confirmation_state.gd")
 const CommandTracker = preload("res://scripts/models/command_tracker.gd")
+const ConfigTransactionState = preload("res://scripts/models/config_transaction_state.gd")
 
 # Input
 const InputRouter = preload("res://scripts/input/input_router.gd")
@@ -43,6 +45,7 @@ const ModeSelectScreen = preload("res://scripts/screens/mode_select_screen.gd")
 const SelectionScreenOverlay = preload("res://scripts/screens/selection_screen_overlay.gd")
 const NodeSelectScreen = preload("res://scripts/screens/node_select_screen.gd")
 const UploadModeScreen = preload("res://scripts/screens/upload_mode_screen.gd")
+const UploadModeOverlay = preload("res://scripts/screens/upload_mode_overlay.gd")
 const AppChrome = preload("res://scripts/screens/app_chrome.gd")
 const ConfirmationOverlay = preload("res://scripts/screens/confirmation_overlay.gd")
 const MonitorScreen = preload("res://scripts/screens/monitor_screen.gd")

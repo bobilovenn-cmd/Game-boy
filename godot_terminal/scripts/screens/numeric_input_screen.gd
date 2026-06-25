@@ -23,6 +23,9 @@ static func draw(canvas: CanvasItem, font: Font, t: Callable, numeric_input, key
 	canvas.draw_line(rect.position, rect.position + Vector2(0, 28), UiTheme.C_ACCENT, 3.0)
 	var title_key = "motion_speed_title" if numeric_input.kind == "speed" else "motion_position_title"
 	var hint_key = "motion_speed_hint" if numeric_input.kind == "speed" else "motion_position_hint"
+	if numeric_input.kind == "node_change":
+		title_key = "cfg_node_input_title"
+		hint_key = "cfg_node_input_hint"
 	AppChrome.draw_text(canvas, font, t.call(title_key), rect.position.x + 30, rect.position.y + 34, UiTheme.C_TEXT, 24)
 	AppChrome.draw_text(canvas, font, t.call(hint_key), rect.position.x + 30, rect.position.y + 78, UiTheme.C_DIM, 14)
 
@@ -34,6 +37,8 @@ static func draw(canvas: CanvasItem, font: Font, t: Callable, numeric_input, key
 	AppChrome.draw_text(canvas, font, value_text, input_rect.position.x, input_rect.position.y + 15, value_color, 22, HORIZONTAL_ALIGNMENT_CENTER, input_rect.size.x)
 	if numeric_input.kind == "speed":
 		AppChrome.draw_text(canvas, font, "speed", input_rect.end.x - 66, input_rect.position.y + 20, UiTheme.C_DIM, 12)
+	elif numeric_input.kind == "node_change":
+		AppChrome.draw_text(canvas, font, "node", input_rect.end.x - 58, input_rect.position.y + 20, UiTheme.C_DIM, 12)
 
 	var y = rect.position.y + KEYBOARD_TOP_OFFSET
 	for row_index in key_rows.size():

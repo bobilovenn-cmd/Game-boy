@@ -40,5 +40,21 @@ func _init() -> void:
 	var heartbeat = Protocol.heartbeat()
 	assert(bool(tracker.track(heartbeat, 1000).get("tracked", false)))
 	assert(tracker.expire(4000).is_empty())
+
+	var commit = Protocol.config_node_change_commit(2, 3)
+	var commit_seq = int(Protocol.parse(commit).get("seq", 0))
+	assert(bool(tracker.track(commit, 1000).get("tracked", false)))
+	assert(
+		tracker.resolve({"cmd": "ack", "seq": commit_seq}, "ack").get("status")
+		== "matched_nonterminal"
+	)
+	assert(
+		tracker.resolve({"cmd": "config_status", "seq": commit_seq}, "config_status").get("status")
+		== "matched_nonterminal"
+	)
+	assert(
+		tracker.resolve({"cmd": "config_result", "seq": commit_seq}, "config_result").get("status")
+		== "matched"
+	)
 	print("command_tracker_test: PASS")
 	quit()

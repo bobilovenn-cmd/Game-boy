@@ -19,7 +19,7 @@ const NODE_KEY_ROWS = Modules.UiConfig.NODE_KEY_ROWS
 const KEYBOARD_ROWS = Modules.UiConfig.KEYBOARD_ROWS
 const NUMERIC_KEY_ROWS = Modules.UiConfig.NUMERIC_KEY_ROWS
 
-const RGB30_UI_REFRESH_MSEC := 200
+const RGB30_UI_REFRESH_MSEC := 100
 
 
 ## 应用模块实例
@@ -43,6 +43,7 @@ var can_log = Modules.CanLogState.new()             # CAN日志状态
 var connection = Modules.ConnectionState.new()      # UDP连接运行状态
 var ota = Modules.OtaState.new()                    # OTA升级状态
 var status = Modules.StatusState.new()              # 状态提示
+var config_state = Modules.ConfigTransactionState.new() # 配置事务状态
 var confirmation = Modules.ConfirmationState.new()  # 危险操作确认
 var command_tracker = Modules.CommandTracker.new()  # UDP 请求/响应关联
 var event_executor = Modules.AppEventExecutor.new() # 平台与网络副作用执行器
@@ -50,18 +51,23 @@ var raw_input = Modules.RawInputReader.new()        # 本机 event 输入桥接�
 var input_router = Modules.InputRouter.new()        # 统一输入事件路由
 var confirmation_overlay = Modules.ConfirmationOverlay.new()
 var selection_screen_overlay = Modules.SelectionScreenOverlay.new()
+var upload_mode_overlay = Modules.UploadModeOverlay.new()
+var ui_redraw_requested := true
 
 var result_msg = ""                         # SDO读取结果
 
 
 ## 应用初始化
 func _ready() -> void:
+	Engine.max_fps = Modules.AppSettings.FPS
 	motor_controller.configure_node(app_session.selected_node_id)
 	navigation.reset(TAB_KEYS.size())
 
 	font = Modules.AppBootstrap.load_ui_font(self)
 	add_child(selection_screen_overlay)
 	selection_screen_overlay.configure(font)
+	add_child(upload_mode_overlay)
+	upload_mode_overlay.configure(font)
 	add_child(confirmation_overlay)
 	confirmation_overlay.configure(font)
 	var udp_result = Modules.AppBootstrap.configure_udp(udp_client)
@@ -86,18 +92,20 @@ func _process(_delta: float) -> void:
 	if refresh_ui:
 		next_ui_refresh_msec = now + RGB30_UI_REFRESH_MSEC
 	# 处理手柄输入队列
-	_drain_raw_input()
+	if _drain_raw_input():
+		_request_redraw()
 	selection_screen_overlay.sync(Callable(self, "_t"), app_session)
+	upload_mode_overlay.sync(Callable(self, "_t"), upload_mode)
 	confirmation_overlay.sync(Callable(self, "_t"), confirmation)
 	# 语言未选择时只渲染语言选择界面
 	if not app_session.language_selected:
-		queue_redraw()
+		_redraw_if_needed(refresh_ui)
 		return
 	if not app_session.mode_selected:
-		queue_redraw()
+		_redraw_if_needed(refresh_ui)
 		return
 	if not app_session.node_selected:
-		queue_redraw()
+		_redraw_if_needed(refresh_ui)
 		return
 
 	for event in runtime.process_frame(
@@ -113,16 +121,19 @@ func _process(_delta: float) -> void:
 		Modules.AppSettings.HEARTBEAT_INTERVAL_MS
 	):
 		_apply_runtime_event(event)
-	queue_redraw()
+	_redraw_if_needed(refresh_ui)
 
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		_handle_key(event.keycode)
+		_request_redraw()
 	elif raw_input.fallback_enabled and event is InputEventJoypadButton:
 		_handle_godot_joy_button(event.button_index, event.pressed)
+		_request_redraw()
 	elif raw_input.fallback_enabled and event is InputEventJoypadMotion:
 		_handle_godot_joy_motion(event.axis, event.axis_value)
+		_request_redraw()
 
 
 ## 渲染入口 - 根据当前状态绘制对应界面
@@ -168,8 +179,10 @@ func _draw() -> void:
 	_draw_footer()               # 底部快捷键提示栏
 
 
-func _drain_raw_input() -> void:
+func _drain_raw_input() -> bool:
+	var changed := false
 	for raw_event in raw_input.drain_events():
+		changed = true
 		if str(raw_event.get("type", "")) == "axis":
 			_apply_input_result(input_router.route_raw_axis(
 				int(raw_event.get("axis", -1)),
@@ -180,6 +193,7 @@ func _drain_raw_input() -> void:
 				int(raw_event.get("value", -1)),
 				Modules.RawInputReader.RELEASE_OFFSET
 			))
+	return changed
 
 
 func _handle_godot_joy_button(button_index: int, pressed: bool) -> void:
@@ -271,6 +285,8 @@ func _apply_interaction_event(result: Dictionary) -> void:
 				str(result.get("ui_message", "")),
 				str(result.get("kind", "info"))
 			)
+		"commit_node_change":
+			_commit_node_change()
 		"status":
 			_set_status(str(result.get("message", "")), str(result.get("kind", "info")))
 		"language_select":
@@ -306,7 +322,9 @@ func _navigation_max_indices() -> Array[int]:
 	]
 
 
-func _confirm_node_input(value: int) -> void:
+func _confirm_node_input(value: int, reset_config_transaction: bool = true) -> void:
+	if reset_config_transaction:
+		config_state.reset()
 	app_session.select_node(value)
 	motor_controller.configure_node(app_session.selected_node_id)
 	navigation.reset(TAB_KEYS.size())
@@ -323,6 +341,7 @@ func _return_to_language_select() -> void:
 	app_session.return_to_language_select(LANGUAGE_OPTIONS)
 	node_selector.reset()
 	status.clear()
+	_request_redraw()
 
 
 func _return_to_mode_select() -> void:
@@ -333,6 +352,7 @@ func _return_to_mode_select() -> void:
 	command_tracker.clear()
 	connection.reset_received()
 	status.clear()
+	_request_redraw()
 
 
 func _confirm_current_selection() -> void:
@@ -341,7 +361,8 @@ func _confirm_current_selection() -> void:
 		navigation.selected_index(),
 		app_session.selected_node_id,
 		CONFIG_ITEMS,
-		motor_controller
+		motor_controller,
+		config_state
 	)
 	_apply_page_command(command)
 
@@ -373,6 +394,7 @@ func _apply_page_command(command: Dictionary) -> void:
 			_apply_firmware_result(firmware_controller.start_transfer(ota, Modules.AppSettings.FIRMWARE_PATHS, Time.get_ticks_msec()))
 		"open_filter":
 			can_filter.start()
+			_request_redraw()
 		"clear_can_log":
 			can_log.clear()
 			_set_status(_t("can_reset_status"))
@@ -395,6 +417,7 @@ func _close_upload_mode() -> void:
 
 func _open_numeric_input(kind: String) -> void:
 	numeric_input.start(kind, motor_controller.target_speed)
+	_request_redraw()
 
 
 func _confirm_numeric_input(kind: String, value: int) -> void:
@@ -403,8 +426,37 @@ func _confirm_numeric_input(kind: String, value: int) -> void:
 			_set_status(_t("motion_speed_range"), "error")
 			return
 		_send(motor_controller.set_target_speed(value), _t("motion_speed_sent") % motor_controller.target_speed)
+	elif kind == "node_change":
+		_prepare_node_change(value)
 	else:
 		_send(motor_controller.move_position(value), _t("motion_position_sent"))
+
+
+func _prepare_node_change(new_node: int) -> void:
+	var old_node = app_session.selected_node_id
+	if new_node < 1 or new_node > 127 or new_node == old_node:
+		_set_status(_t("cfg_node_invalid"), "error")
+		return
+	config_state.start_prepare(old_node, new_node)
+	var sent = _send(
+		Modules.Protocol.config_node_change_prepare(old_node, new_node),
+		_t("cfg_node_prepare_sent") % [old_node, new_node]
+	)
+	if not sent:
+		config_state.apply_prepare_ack(false, "send failed")
+
+
+func _commit_node_change() -> void:
+	if not config_state.can_commit_prepared():
+		_set_status(_t("cfg_node_invalid"), "error")
+		return
+	config_state.start_commit()
+	var sent = _send(
+		Modules.Protocol.config_node_change_commit(config_state.old_node, config_state.new_node),
+		_t("cfg_node_commit_sent")
+	)
+	if not sent:
+		config_state.apply_result(false, app_session.selected_node_id, "send failed")
 
 func _apply_runtime_event(event: Dictionary) -> void:
 	if event.has("result_msg"):
@@ -424,6 +476,30 @@ func _apply_runtime_event(event: Dictionary) -> void:
 				],
 				"error"
 			)
+			if str(event.get("cmd", "")).begins_with("config_node_change"):
+				config_state.apply_result(false, app_session.selected_node_id, "timeout")
+		"config_prepare_ack":
+			config_state.apply_prepare_ack(
+				bool(event.get("ok", false)),
+				str(event.get("message", ""))
+			)
+			if bool(event.get("ok", false)):
+				_set_status(_t("cfg_node_prepare_ok"), "info")
+		"config_status":
+			config_state.apply_status(
+				str(event.get("phase", "")),
+				int(event.get("progress", 0))
+			)
+			_set_status(str(config_state.message), "info")
+		"config_result":
+			var ok = bool(event.get("ok", false)) and bool(event.get("verified", false))
+			var active_node = int(event.get("active_node", app_session.selected_node_id))
+			config_state.apply_result(ok, active_node, str(event.get("message", "")))
+			var final_message = str(config_state.message)
+			if ok:
+				_confirm_node_input(active_node, false)
+				config_state.reset()
+			_set_status(final_message, "info" if ok else "error")
 
 
 func _send(message: String, ui_msg: String = "", kind: String = "info") -> bool:
@@ -482,7 +558,7 @@ func _draw_monitor_page() -> void:
 
 
 func _draw_config_page() -> void:
-	Modules.ConfigScreen.draw(self, font, Callable(self, "_t"), CONFIG_ITEMS, navigation.selected_index(1), result_msg)
+	Modules.ConfigScreen.draw(self, font, Callable(self, "_t"), CONFIG_ITEMS, navigation.selected_index(1), result_msg, config_state)
 
 
 func _draw_ota_page() -> void:
@@ -534,14 +610,27 @@ func _can_action_labels() -> Array[String]:
 
 func _set_status(message: String, kind: String = "info") -> void:
 	status.set_message(message, kind)
+	_request_redraw()
 
 
 func _log_ota(message: String) -> void:
 	ota.add_log(message)
+	_request_redraw()
 
 
 func _request_confirmation(message_key: String, action: Dictionary) -> void:
 	confirmation.arm(message_key, action, Time.get_ticks_msec())
+	_request_redraw()
+
+
+func _request_redraw() -> void:
+	ui_redraw_requested = true
+
+
+func _redraw_if_needed(refresh_ui: bool) -> void:
+	if refresh_ui or ui_redraw_requested:
+		ui_redraw_requested = false
+		queue_redraw()
 
 
 func _apply_confirmed_action(action: Dictionary) -> void:
@@ -552,3 +641,5 @@ func _apply_confirmed_action(action: Dictionary) -> void:
 				_set_status("Shutdown failed: %d" % int(result.get("code", -1)), "error")
 		"send":
 			_apply_page_command(action)
+		"commit_node_change":
+			_commit_node_change()

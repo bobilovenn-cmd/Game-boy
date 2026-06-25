@@ -13,6 +13,8 @@ const INBOUND_COMMANDS = {
 	"motor_status": true,
 	"ota_status": true,
 	"sdo_read_result": true,
+	"config_status": true,
+	"config_result": true,
 }
 
 static var _seq_counter = 0
@@ -120,6 +122,22 @@ static func car_move(left_node: int, right_node: int, left_speed: int, right_spe
 		"right_node": right_node,
 		"left_speed": left_speed,
 		"right_speed": right_speed,
+	})
+
+
+static func config_node_change_prepare(old_node: int, new_node: int) -> String:
+	return _build("config_node_change_prepare", {
+		"old_node": old_node,
+		"new_node": new_node,
+	})
+
+
+static func config_node_change_commit(old_node: int, new_node: int) -> String:
+	return _build("config_node_change_commit", {
+		"old_node": old_node,
+		"new_node": new_node,
+		"save": true,
+		"reboot": true,
 	})
 
 

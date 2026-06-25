@@ -11,7 +11,7 @@ const ROW_HEIGHT: float = 32.0
 const ROW_STEP: float = 36.0
 
 
-static func draw(canvas: CanvasItem, font: Font, t: Callable, config_items: Array, selected_index: int, result_msg: String) -> void:
+static func draw(canvas: CanvasItem, font: Font, t: Callable, config_items: Array, selected_index: int, result_msg: String, config_state = null) -> void:
 	AppChrome.draw_panel(canvas, UiConfig.CONFIG_PANEL_RECT, UiTheme.C_PANEL, UiTheme.C_LINE)
 	AppChrome.draw_text(canvas, font, t.call("config_header"), 36, 158, UiTheme.C_ACCENT, 13)
 	var y = ROW_START_Y
@@ -30,6 +30,8 @@ static func draw(canvas: CanvasItem, font: Font, t: Callable, config_items: Arra
 	AppChrome.draw_panel(canvas, UiConfig.CONFIG_RESULT_RECT, UiTheme.C_INPUT, UiTheme.C_LINE)
 	AppChrome.draw_text(canvas, font, t.call("sdo_result"), 36, 562, UiTheme.C_TEXT, 11)
 	var text = result_msg if result_msg != "" else t.call("no_sdo")
+	if config_state != null and str(config_state.message) != "":
+		text = str(config_state.message)
 	AppChrome.draw_text(canvas, font, text, 36, 586, UiTheme.C_TEXT, 11)
 
 

@@ -3,12 +3,12 @@ extends RefCounted
 const Protocol = preload("res://scripts/protocol.gd")
 
 
-func resolve(tab: int, selected_index: int, node_id: int, config_items: Array, motor_controller) -> Dictionary:
+func resolve(tab: int, selected_index: int, node_id: int, config_items: Array, motor_controller, config_state = null) -> Dictionary:
 	match tab:
 		0:
 			return _monitor_command(selected_index, motor_controller)
 		1:
-			return _config_command(selected_index, node_id, config_items)
+			return _config_command(selected_index, node_id, config_items, config_state)
 		2:
 			return _ota_command(selected_index, node_id)
 		3:
@@ -35,13 +35,23 @@ func _monitor_command(index: int, motor_controller) -> Dictionary:
 	return {}
 
 
-func _config_command(selected_index: int, node_id: int, config_items: Array) -> Dictionary:
+func _config_command(selected_index: int, node_id: int, config_items: Array, config_state = null) -> Dictionary:
 	if selected_index < 0 or selected_index >= config_items.size():
 		return {}
 	var item: Array = config_items[selected_index]
 	var name_key = str(item[0])
 	var object_index = int(item[1])
 	var sub_index = int(item[2])
+	if name_key == "cfg_change_node":
+		if config_state != null and config_state.can_commit_prepared():
+			return {
+				"event": "confirm_required",
+				"message_key": "confirm_change_node",
+				"confirmed_action": {
+					"event": "commit_node_change",
+				},
+			}
+		return {"event": "open_numeric", "kind": "node_change"}
 	if name_key == "cfg_save_eeprom":
 		return {
 			"event": "confirm_required",

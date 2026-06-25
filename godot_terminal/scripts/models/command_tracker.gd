@@ -14,6 +14,7 @@ const LONG_TIMEOUT_COMMANDS = {
 	"ota_flash": true,
 	"ota_start": true,
 	"ota_verify": true,
+	"config_node_change_commit": true,
 }
 
 var pending: Dictionary = {}
@@ -46,7 +47,13 @@ func resolve(response: Dictionary, response_cmd: String) -> Dictionary:
 		return {"status": "unknown_seq", "seq": seq}
 	var command: Dictionary = pending[seq]
 	var command_name = str(command.get("cmd", ""))
-	var terminal = not (response_cmd == "ack" and command_name == "sdo_read")
+	var terminal = true
+	if response_cmd == "ack" and command_name in ["sdo_read", "config_node_change_commit"]:
+		terminal = false
+	if response_cmd == "config_status" and command_name == "config_node_change_commit":
+		terminal = false
+	if response_cmd == "config_result":
+		terminal = true
 	if terminal:
 		pending.erase(seq)
 	return {
